@@ -9,6 +9,8 @@ use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseRequestController;
+use App\Http\Controllers\RISController;
+use App\Http\Controllers\SSMIController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -79,6 +81,27 @@ Route::middleware('auth')->group(function () {
         ->name('inspection-acceptance-reports.pdf');
 
     Route::post('/inventory/to-iar', [InventoryController::class, 'toIAR'])->name('inventory.toIAR');
+
+    Route::get('ris', [RISController::class, 'index'])
+        ->name('ris.index')
+        ->middleware('section:Inventory and Sales');
+
+    Route::get('ris/{purchaseOrder}', [RISController::class, 'show'])
+        ->name('ris.show')
+        ->middleware('section:Inventory and Sales');
+
+    Route::post('ris/{purchaseOrder}/generate', [RISController::class, 'generateRISNumber'])
+        ->name('ris.generateNumber')
+        ->middleware('section:Inventory and Sales');
+
+    Route::get('ssmi', [SSMIController::class, 'index'])
+        ->name('ssmi.index')
+        ->middleware('section:Inventory and Sales');
+
+    Route::get('ssmi/{purchaseOrder}', [SSMIController::class, 'show'])
+        ->name('ssmi.show')
+        ->middleware('section:Inventory and Sales');
+
 
     Route::resource('inventory', InventoryController::class)
         ->middleware('section:Inventory and Sales');

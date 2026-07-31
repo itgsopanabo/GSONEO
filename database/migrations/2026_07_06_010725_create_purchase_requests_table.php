@@ -51,6 +51,17 @@ return new class extends Migration {
             $table->string('PR_Number')->unique();
             $table->date('supplier_receive_date')->nullable();
             $table->integer('poNumbered_by')->nullable();
+
+            $table->string('RIS_Number')->nullable();
+            $table->date('RIS_Date')->nullable();
+            $table->integer('risNumbered_by')->nullable();
+
+            // TODO Uncomment if needed
+            $table->string('SSMI_Number')->nullable();
+            $table->date('SSMI_Date')->nullable();
+            $table->integer('ssmiNumbered_by')->nullable();
+
+
             $table->unsignedInteger('status');
 
 
@@ -62,6 +73,12 @@ return new class extends Migration {
             $table->foreign('PR_Number')->references('pr_number')->on('purchase_requests');
 
             $table->foreign('poNumbered_by')
+                ->references('emp_id')
+                ->on('users')
+                ->cascadeOnUpdate()
+                ->nullOnDelete();
+
+            $table->foreign('risNumbered_by')
                 ->references('emp_id')
                 ->on('users')
                 ->cascadeOnUpdate()

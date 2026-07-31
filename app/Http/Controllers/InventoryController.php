@@ -47,7 +47,6 @@ class InventoryController extends Controller
         ]);
     }
 
-
     public function toIAR(Request $request)
     {
         $validated = $request->validate([

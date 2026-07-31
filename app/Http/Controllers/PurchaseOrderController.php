@@ -8,6 +8,8 @@ use App\Models\PurchaseRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use function Pest\Laravel\json;
 use function Termwind\render;
@@ -108,22 +110,44 @@ class PurchaseOrderController extends Controller
     {
         $validated = $request->validate([
             'po_number_mode' => 'required|in:auto,manual',
-            'po_number_input' => 'required_if:po_number_mode,manual|nullable|string|max:50',
+            'po_number_input' => 'required_if:po_number_mode,manual|nullable|integer|min:1|max:9999',
             'supplier' => 'required|string|max:255',
             'date_received' => 'required|date',
         ]);
 
-        if ($validated['po_number_mode'] === 'manual') {
-            $poNumber = $validated['po_number_input'];
-        } else {
+        $poNumber = DB::transaction(function () use ($validated) {
             $year = now()->year;
+
+            if ($validated['po_number_mode'] === 'manual') {
+                $seq = (int) $validated['po_number_input'];
+                $poNumber = sprintf('PO-%d-%04d', $year, $seq);
+
+                if (PurchaseOrder::where('PO_Number', $poNumber)->exists()) {
+                    throw ValidationException::withMessages([
+                        'po_number_input' => "PO number {$poNumber} already exists.",
+                    ]);
+                }
+
+                return $poNumber;
+            }
+
+            // Lock matching rows for the duration of the transaction to avoid
+            // two concurrent requests generating the same number.
             $lastPO = PurchaseOrder::where('PO_Number', 'like', "PO-{$year}-%")
-                ->orderByDesc('id')
+                ->lockForUpdate()
+                ->orderByRaw("CAST(SUBSTRING(PO_Number, -4) AS UNSIGNED) DESC")
                 ->first();
 
-            $nextSeq = $lastPO ? ((int)substr($lastPO->PO_Number, -4)) + 1 : 1;
-            $poNumber = sprintf('PO-%d-%04d', $year, $nextSeq);
-        }
+            $nextSeq = $lastPO ? ((int) substr($lastPO->PO_Number, -4)) + 1 : 1;
+
+            do {
+                $candidate = sprintf('PO-%d-%04d', $year, $nextSeq);
+                $exists = PurchaseOrder::where('PO_Number', $candidate)->exists();
+                $nextSeq++;
+            } while ($exists);
+
+            return $candidate;
+        });
 
         $oldValues = $purchase_order->only(['PO_Number', 'PO_Supplier', 'supplier_receive_date', 'status']);
 

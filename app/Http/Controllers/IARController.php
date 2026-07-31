@@ -137,6 +137,10 @@ class IARController extends Controller
             'items' => $items,
         ]);
 
+//        Update to status 400
+        {/*TODO Uncomment when we want to proceed to RIS Numbering*/}
+//        $purchaseOrder->update(['status' => 400]);
+
         return $pdf->stream("IAR-{$purchaseOrder->id}.pdf");
     }
 }

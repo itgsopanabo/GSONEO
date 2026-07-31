@@ -146,8 +146,8 @@ export default function AuthenticatedLayout({header, children}) {
                                                  className="w-full justify-start py-2 text-xs">
                                             Inventory
                                         </NavLink>
-                                        <NavLink href={route('inventory.iar.index')}
-                                                 active={route().current('inventory.iar.index')}
+                                        <NavLink href={route('inspection-acceptance-reports.index')}
+                                                 active={route().current('inspection-acceptance-reports.index')}
                                                  className="w-full justify-start py-2 text-xs">
                                             Inspection & Acceptance Report
                                         </NavLink>
@@ -186,7 +186,13 @@ export default function AuthenticatedLayout({header, children}) {
                                         </NavLink>
                                     </div>
                                 )}
+
                                 {/* Stocks and Inventory Group (Hidden for Admin) */}
+
+                                {/*
+                                TODO 1. Match the navigation to the Designation Role
+                                */}
+
                                 {auth.user.role.section === 'Inventory and Sales' && (<>
                                     {/* Incoming */}
                                     <div className="flex flex-col space-y-1">
@@ -196,11 +202,20 @@ export default function AuthenticatedLayout({header, children}) {
                                                  className="w-full justify-start py-2 text-xs">
                                             Incoming
                                         </NavLink>
-                                        {/*<NavLink href={route('inventory.outgoing.index')}*/}
-                                        {/*         active={route().current('inventory.outgoing.index')}*/}
+
+                                        <NavLink href={route('ris.index')}
+                                                 active={route().current('ris.index')}
+                                                 className="w-full justify-start py-2 text-xs">
+                                            Requisition and Issue Slip
+                                        </NavLink>
+
+                                        {/*TODO Route needs to match and add Controller and Model*/}
+                                        {/*<NavLink href={route('')}*/}
+                                        {/*         active={route().current('')}*/}
                                         {/*         className="w-full justify-start py-2 text-xs">*/}
                                         {/*    Outgoing*/}
                                         {/*</NavLink>*/}
+
                                     </div>
 
                                     {/* Generating Reports */}
@@ -216,12 +231,13 @@ export default function AuthenticatedLayout({header, children}) {
                                             IA Report
                                         </NavLink>
 
-                                        {/*<NavLink*/}
-                                        {/*    href={route('inventory.ssmi.index')}*/}
-                                        {/*    active={route().current('inventory.ssmi.index')}*/}
-                                        {/*    className="w-full justify-start py-2 text-xs">*/}
-                                        {/*    (Summary of Supplies and Materials Issued Report) SSMI*/}
-                                        {/*</NavLink>*/}
+                                        {/*TODO Route needs to match*/}
+                                        <NavLink
+                                            href={route('ssmi.index')}
+                                            active={route().current('ssmi.index')}
+                                            className="w-full justify-start py-2 text-xs">
+                                            SSMI (Summary of Supplies and Materials Issued)
+                                        </NavLink>
                                     </div>
                                 </>)}
 

@@ -24,7 +24,7 @@ class PurchaseRequestController extends Controller
         $user = Auth::user();
 
         $query = PurchaseRequest::with(['items'])
-            ->whereNotIn('status', [400,210])
+            ->whereNotIn('status', [400, 210])
             ->orderBy('status', 'desc')
             ->latest();
 
@@ -40,7 +40,7 @@ class PurchaseRequestController extends Controller
 
         // PO Officer
         if ($user && in_array($user->role_id, [3, 5])) {
-            $query->whereIn('status', [210,200]);
+            $query->whereIn('status', [210, 200]);
         }
 
         $purchaseRequests = $query->paginate(10);
@@ -219,17 +219,27 @@ class PurchaseRequestController extends Controller
     /**
      * Decline a Purchase Request.
      */
-    public function decline(string $id)
+    public function decline(Request $request, string $id)
     {
+        $validated = $request->validate([
+            'reason_to_decline' => 'required|string|max:1000',
+        ]);
+
         $pr = PurchaseRequest::findOrFail($id);
 
         // Capture baseline data before alteration
-        $oldValues = ['status' => $pr->status, 'decline_by_emp_id' => $pr->decline_by_emp_id, 'declined_At' => $pr->declined_At];
+        $oldValues = [
+            'status' => $pr->status,
+            'decline_by_emp_id' => $pr->decline_by_emp_id,
+            'declined_At' => $pr->declined_At,
+            'reason_to_decline' => $pr->reason_to_decline,
+        ];
 
         $pr->update([
-            'status' => 400,
+            'status' => 700,
             'decline_by_emp_id' => auth()->id(),
             'declined_At' => now(),
+            'reason_to_decline' => $validated['reason_to_decline'],
         ]);
 
         AuditLog::create([
@@ -237,16 +247,20 @@ class PurchaseRequestController extends Controller
             'action' => 'declined',
             'auditable_type' => PurchaseRequest::class,
             'auditable_id' => $pr->pr_number,
-            'description' => "Declined Purchase Request #{$pr->pr_number}",
+            'description' => "Declined Purchase Request #{$pr->pr_number}: {$validated['reason_to_decline']}",
             'old_values' => $oldValues,
-            'new_values' => ['status' => 400, 'decline_by_emp_id' => auth()->id(), 'declined_At' => $pr->declined_At],
+            'new_values' => [
+                'status' => 400,
+                'decline_by_emp_id' => auth()->id(),
+                'declined_At' => $pr->declined_At,
+                'reason_to_decline' => $pr->reason_to_decline,
+            ],
             'ip_address' => request()->ip(),
             'user_agent' => request()->userAgent(),
         ]);
 
         return redirect()->route('purchase-requests.index')->with('success', 'Purchase Request has been declined.');
     }
-
 
     /**
      * Decline a Proceed to canvassing.
