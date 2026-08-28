@@ -4,18 +4,22 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CanvasFromController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EncodingController;
 use App\Http\Controllers\IARController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\ItemsController;
+use App\Http\Controllers\Others\LeaveController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseRequestController;
 use App\Http\Controllers\RISController;
 use App\Http\Controllers\SSMIController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
 Route::get('/', [AuthenticatedSessionController::class, 'create'])
     ->middleware('guest'); // Prevents logged-in users from seeing it
+
+Route::get('/pls', fn() => view('pdf/pls'))->name('pls');
 
 
 Route::middleware('auth')->group(function () {
@@ -26,7 +30,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])
         ->middleware(['auth', 'verified'])
         ->name('dashboard');
-
 
 //    Procurement
     Route::get('/purchase-requests/{id}/pdf', [PurchaseRequestController::class, 'exportPdf'])
@@ -39,7 +42,7 @@ Route::middleware('auth')->group(function () {
         ->name('purchase-requests.decline')
         ->middleware('can:verify-pr');
 
-    Route::post('purchase-requests/{purchase_request}/approve', [PurchaseRequestController::class, 'canvasing'])
+    Route::post('purchase-requests  /{purchase_request}/approve', [CanvasFromController::class, 'proceedCanvassing'])
         ->name('purchase-requests.proceedCanvas')
         ->middleware('can:canvass');
 
@@ -55,10 +58,34 @@ Route::middleware('auth')->group(function () {
         ->name('purchase-requests.printCanvas')
         ->middleware('can:canvass');
 
+    Route::put('canvas/{canva}/reprint', [CanvasFromController::class, 'recanvas'])
+        ->name('canvas.reprint')
+        ->middleware('can:canvass');
+
+    Route::get('purchase-requests/{purchase_request}/canvas', [CanvasFromController::class, 'viewCanvasForm'])
+        ->name('purchase-requests.canvas')
+        ->middleware('can:canvass');
+
+    Route::resource('canvas', CanvasFromController::class)
+        ->only(['index', 'show'])
+        ->middleware('section:Procurement');
+
+    Route::post('purchase-requests/ocr', [PurchaseRequestController::class, 'ocr'])
+        ->name('purchase-requests.ocr');
+
+
     Route::resource('purchase-requests', PurchaseRequestController::class)
         ->middleware('section:Procurement');
 
-//    Purchase Order
+    Route::post('encode/draft', [EncodingController::class, 'draft'])
+        ->name('encode.draft')
+        ->middleware('section:Procurement');
+
+    Route::resource('encode', EncodingController::class)
+        ->middleware('section:Procurement')
+        ->parameters(['encode' => 'purchaseRequest']);
+
+    //    Purchase Order
 
     Route::resource('purchase-orders', PurchaseOrderController::class)
         ->only(['index', 'show']);
@@ -73,12 +100,21 @@ Route::middleware('auth')->group(function () {
         ->name('inspection-acceptance-reports.index')
         ->middleware('section:Inventory and Sales');
 
+
     Route::get('inspection-acceptance-reports/{purchase_order}', [IARController::class, 'show'])
         ->name('inspection-acceptance-reports.show')
         ->middleware('section:Inventory and Sales');
 
     Route::get('/inspection-acceptance-reports/{purchaseOrder}/pdf', [IARController::class, 'generatePdf'])
         ->name('inspection-acceptance-reports.pdf');
+
+    Route::post('/inventory/outgoing', [InventoryController::class, 'toRelease'])
+        ->name('inventory.outgoing.release')
+        ->middleware('section:Inventory and Sales');
+
+    Route::get('/inventory/outgoings', [InventoryController::class, 'outgoing'])
+        ->name('inventory.outgoings')
+        ->middleware('section:Inventory and Sales');
 
     Route::post('/inventory/to-iar', [InventoryController::class, 'toIAR'])->name('inventory.toIAR');
 
@@ -94,12 +130,16 @@ Route::middleware('auth')->group(function () {
         ->name('ris.generateNumber')
         ->middleware('section:Inventory and Sales');
 
-    Route::get('ssmi', [SSMIController::class, 'index'])
-        ->name('ssmi.index')
+    Route::post('ssmi/{purchaseOrder:PO_Number}/generate', [SSMIController::class, 'generateNumber'])
+        ->name('ssmi.generateNumber');
+
+    Route::post('ssmi/{purchaseOrder}/outgoing', [SSMIController::class, 'toOutgoing'])
+        ->name('ssmi.toOutgoing')
         ->middleware('section:Inventory and Sales');
 
-    Route::get('ssmi/{purchaseOrder}', [SSMIController::class, 'show'])
-        ->name('ssmi.show')
+
+    Route::get('ssmi', [SSMIController::class, 'index'])
+        ->name('ssmi.index')
         ->middleware('section:Inventory and Sales');
 
 
@@ -108,6 +148,12 @@ Route::middleware('auth')->group(function () {
 
 //    ADMIN/SUPERADMIN/IT
     Route::get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
+
+    Route::post('items/bulk', [ItemsController::class, 'bulkStore'])->name('items.bulk');
+    Route::resource('/items', ItemsController::class)->except(['create', 'edit', 'show']);
+
+    Route::get('/leave', [LeaveController::class, 'create'])->name('leave');
+    Route::get('/leave/print', [LeaveController::class, 'print'])->name('leave.print');
 });
 
 

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class IAR extends Model
 {
+    protected $table = 'iar';
     protected $fillable = [
         'iar_number',
         'invoice_number',

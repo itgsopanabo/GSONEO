@@ -28,6 +28,16 @@ class InventoryController extends Controller
         return Inertia::render('Inventory/incomingIndex', compact('purchaseOrders'));
     }
 
+    public function outgoing()
+    {
+        $purchaseOrders = PurchaseOrder::with(['purchaseRequest.items'])
+            ->where('status', 550)
+            ->latest()
+            ->paginate(15);
+
+        return Inertia::render('Inventory/outgoingIndex', compact('purchaseOrders'));
+    }
+
     // Change 'PurchaseOrder $purchase_order' to raw ID parameter '$id'
     public function show($id)
     {
@@ -63,5 +73,21 @@ class InventoryController extends Controller
         return redirect()
             ->route('inspection-acceptance-reports.index')
             ->with('success', "PO #{$purchaseOrder->PO_Number} status updated successfully.");
+    }
+
+
+    public function toRelease(Request $request)
+    {
+
+        $purchaseOrder = PurchaseOrder::where('PO_Number', $request->input('PO_Number'))
+            ->orWhere('po_number', $request->input('PO_Number'))
+            ->with(['purchaseRequest.items'])
+            ->firstOrFail();
+
+        $purchaseOrder->update([
+            'status' => 600, // Updated status code for IAR stage
+        ]);
+
+        return redirect()->route('inventory.outgoings');
     }
 }

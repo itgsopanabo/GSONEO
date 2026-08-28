@@ -38,6 +38,9 @@ class PurchaseRequest extends Model
         'PO_Supplier',
         'supplier_receive_date',
         'poNumbered_by',
+        'mode_of_procurement',
+        'encoded_by',
+        'encoded_at',
     ];
 
     public function user(): BelongsTo
@@ -48,6 +51,11 @@ class PurchaseRequest extends Model
     public function items(): HasMany
     {
         return $this->hasMany(PurchaseRequestItem::class);
+    }
+
+    public function canvasForms(): HasMany
+    {
+        return $this->hasMany(CanvasForms::class, 'pr_number', 'pr_number');
     }
 
 

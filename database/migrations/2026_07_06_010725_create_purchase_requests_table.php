@@ -17,17 +17,19 @@ return new class extends Migration {
 
             $table->text('requester_name');
             $table->text('requester_department');
-            $table->date('needed_by_date')->nullable();
+            $table->text('mode_of_procurement')->nullable();
             $table->text('remarks_or_notes')->nullable();
             $table->text('reason_to_decline')->nullable();
 
             // CHANGE THIS TO INTEGER TO MATCH USERS TABLE
             $table->integer('verify_by_emp_id')->nullable();
+            $table->integer('encoded_by')->nullable();
             $table->integer('decline_by_emp_id')->nullable();
 
             $table->unsignedInteger('status')->default(0);
             $table->timestamps();
             $table->date('verified_At')->nullable();
+            $table->date('encoded_at')->nullable();
             $table->date('declined_At')->nullable();
 
             // Foreign Key Constraints
@@ -45,7 +47,7 @@ return new class extends Migration {
 
         Schema::create('purchase_order', function (Blueprint $table) {
             $table->id();
-            $table->string('PO_Number')->unique()->nullable();
+            $table->string('PO_Number')->nullable()->unique();
             $table->string('PO_Supplier') ->nullable();
             $table->string('PO_Date')->nullable();
             $table->string('PR_Number')->unique();

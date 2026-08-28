@@ -17,7 +17,10 @@ class PurchaseOrder extends Model
      * TODO add the SSMI_Number, SSMI_Date, ssmiNumbered_by for SSMI Integration
      */
     protected $fillable = [
-        'PO_Number', 'PO_Supplier', 'PO_Date', 'PR_Number', 'supplier_receive_date', 'poNumbered_by', 'status', 'RIS_Number', 'RIS_Date', 'risNumbered_by'
+        'PO_Number', 'PO_Supplier', 'PO_Date', 'PR_Number', 'supplier_receive_date', 'poNumbered_by', 'status', 'RIS_Number', 'RIS_Date', 'risNumbered_by',
+        'SSMI_Number',
+        'SSMI_Date',
+        'ssmiNumbered_by'
     ];
 
     public function user(): BelongsTo
@@ -32,4 +35,8 @@ class PurchaseOrder extends Model
     }
 
 
+    public function IARs()
+    {
+        return $this->hasMany(IAR::class, 'PO_Number', 'PO_Number');
+    }
 }

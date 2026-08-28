@@ -62,7 +62,7 @@ class RISController extends Controller
             'RIS_Number' => $risNumber,
             'RIS_Date' => now()->format('Y-m-d'), // remove this line if you don't have this column
             'risNumbered_by' => auth()->id(),      // remove this line if you don't have this column
-            // 'status' => 500,
+             'status' => 500,
             // {/*TODO Uncomment if we want to proceed to SSMI*/}
         ]);
 

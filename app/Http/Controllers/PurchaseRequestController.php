@@ -6,12 +6,17 @@ use App\Models\AuditLog;
 use App\Models\Departments;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
+use App\Services\PrTableParser;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class PurchaseRequestController extends Controller
@@ -30,7 +35,7 @@ class PurchaseRequestController extends Controller
 
         // PR Verifier
         if ($user && in_array($user->role_id, [3, 4])) {
-            $query->where('status', 0);
+            $query->where('status', 1);
         }
 
         // Canvas Officer
@@ -57,89 +62,42 @@ class PurchaseRequestController extends Controller
             'ip_address' => request()->ip(),
             'user_agent' => request()->userAgent(),
         ]);
-
-        return Inertia::render('PurchaseRequest/Index', [
-            'purchaseRequests' => $purchaseRequests
+//
+//        dd($purchaseRequests->all());
+        return Inertia::render('Procurement/PurchaseRequest/Index', [
+            'purchaseRequests' => $purchaseRequests,
+            'departments' => Departments::pluck('Department_Name'),
         ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        $departments = Departments::select('Department_Code', 'Department_Name')
-            ->orderBy('Department_Code', 'asc')->get();
-
-        return Inertia::render('PurchaseRequest/Create', [
-            'departments' => $departments
-        ]);
-    }
 
     /**
-     * Store a newly created resource in storage.
      * @throws \Throwable
      */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'requester_name' => 'required|string|max:255',
-            'requester_department' => 'required|string|max:255',
-            'needed_by_date' => 'nullable|date|after_or_equal:today',
-            'remarks_or_notes' => 'nullable|string',
-            'items' => 'required|array|min:1',
-            'items.*.item_name' => 'required|string|max:255',
-            'items.*.description' => 'required|string',
-            'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit' => 'required|string|max:50',
-            'items.*.estimated_unit_price' => 'required|numeric|min:0',
+        $data = $request->validate([
+            'requester_name' => ['required', 'string', 'max:255'],
+            'requester_department' => ['required', 'string', 'max:255'],
+            'remarks_or_notes' => ['required', 'string', 'max:2000'],
         ]);
 
-        $purchaseRequest = DB::transaction(function () use ($validated) {
-            $prNumber = 'EPR-' . date('Y') . '-' . str_pad(PurchaseRequest::count() + 1, 4, '0', STR_PAD_LEFT);
-
-            $purchaseRequest = PurchaseRequest::create([
-                'pr_number' => $prNumber,
-                'requester_name' => $validated['requester_name'],
-                'requester_department' => $validated['requester_department'],
-                'needed_by_date' => $validated['needed_by_date'],
-                'remarks_or_notes' => $validated['remarks_or_notes'],
-                'status' => 0,
-                'verify_by_emp_id' => null,
+        $purchaseRequest = DB::transaction(function () use ($data) {
+            return PurchaseRequest::create([
+                ...$data,
+                'pr_number' => $this->generatePrNumber(),
+                'status' => 0, // ← confirm this, see note below
             ]);
-
-            $itemsData = array_map(function ($item) use ($prNumber) {
-                return [
-                    'purchase_request_id' => $prNumber,
-                    'item_name' => $item['item_name'],
-                    'item_desc' => $item['description'],
-                    'quantity' => $item['quantity'],
-                    'unit' => $item['unit'],
-                    'estimated_unit_cost' => $item['estimated_unit_price'],
-                    'total_estimated_cost' => $item['quantity'] * $item['estimated_unit_price'],
-                ];
-            }, $validated['items']);
-
-            $purchaseRequest->items()->createMany($itemsData);
-
-            return $purchaseRequest;
         });
 
-        AuditLog::create([
-            'user_id' => Auth::id(),
-            'action' => 'created',
-            'auditable_type' => PurchaseRequest::class,
-            'auditable_id' => $purchaseRequest->pr_number,
-            'description' => "Created Purchase Request {$purchaseRequest->pr_number} for {$purchaseRequest->requester_name}",
-            'old_values' => null,
-            'new_values' => $purchaseRequest->load('items')->toArray(),
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
-
-        return redirect()->route('purchase-requests.index')
-            ->with('success', 'Purchase Request created successfully.');
+        return back()
+            ->with('success', "Purchase request {$purchaseRequest->pr_number} created.")
+            ->with('created_pr', [
+                'id' => $purchaseRequest->id,
+                'pr_number' => $purchaseRequest->pr_number,
+            ]);
     }
+
 
     /**
      * Display the specified resource.
@@ -164,7 +122,7 @@ class PurchaseRequestController extends Controller
         $purchaseRequest->load('items');
 
         // 4. Safely render the Inertia view
-        return Inertia::render('PurchaseRequest/Show', [
+        return Inertia::render('Procurement/PurchaseRequest/Show', [
             'purchaseRequest' => $purchaseRequest
         ]);
     }
@@ -188,12 +146,16 @@ class PurchaseRequestController extends Controller
     /**
      * Verify a Purchase Request using the user object.
      */
-    public function verify(string $id)
+    public function verify(Request $request, PurchaseRequest $purchaseRequest)
     {
-        $pr = PurchaseRequest::findOrFail($id);
+        $pr = $purchaseRequest;
 
         // Capture baseline data before alteration
-        $oldValues = ['status' => $pr->status, 'verify_by_emp_id' => $pr->verify_by_emp_id, 'verified_At' => $pr->verified_At];
+        $oldValues = [
+            'status' => $pr->status,
+            'verify_by_emp_id' => $pr->verify_by_emp_id,
+            'verified_At' => $pr->verified_At,
+        ];
 
         $pr->update([
             'status' => 100,
@@ -208,12 +170,13 @@ class PurchaseRequestController extends Controller
             'auditable_id' => $pr->pr_number,
             'description' => "Verified Purchase Request #{$pr->pr_number}",
             'old_values' => $oldValues,
-            'new_values' => ['status' => 100, 'verify_by_emp_id' => auth()->id(), 'verified_At' => $pr->verified_At],
+            'new_values' => $pr->only(array_keys($oldValues)),
             'ip_address' => request()->ip(),
             'user_agent' => request()->userAgent(),
         ]);
 
-        return redirect()->route('purchase-requests.index')->with('success', 'Purchase Request verified successfully.');
+        return redirect()->route('purchase-requests.index')
+            ->with('success', 'Purchase Request verified successfully.');
     }
 
     /**
@@ -263,40 +226,6 @@ class PurchaseRequestController extends Controller
     }
 
     /**
-     * Decline a Proceed to canvassing.
-     */
-    public function canvasing(string $id)
-    {
-        $pr = PurchaseRequest::findOrFail($id);
-
-        // Capture baseline data before alteration
-        $oldValues = ['status' => $pr->status, 'verify_by_emp_id' => $pr->verify_by_emp_id, 'verified_At' => $pr->verified_At];
-
-        $pr->update([
-            'status' => 200,
-            'verify_by_emp_id' => auth()->id(),
-            'verified_At' => now(),
-        ]);
-
-
-        AuditLog::create([
-            'user_id' => Auth::id(),
-            'action' => 'Canvassing',
-            'auditable_type' => PurchaseRequest::class,
-            'auditable_id' => $pr->pr_number,
-            'description' => "Proceed Purchase Request #{$pr->pr_number} to canvassing",
-            'old_values' => $oldValues,
-            'new_values' => ['status' => 200, 'start_canvas_by' => auth()->id()],
-            'ip_address' => request()->ip(),
-            'user_agent' => request()->userAgent(),
-        ]);
-
-
-        return redirect()->route('purchase-requests.index')->with('success', 'Purchase Request has been proceed to canvassing.');
-    }
-
-
-    /**
      * Verify a PO.
      */
     public function verifyPO(string $id)
@@ -314,7 +243,7 @@ class PurchaseRequestController extends Controller
 
         PurchaseOrder::create([
             'PR_Number' => $pr->pr_number,
-            'status' => 220,
+            'status' => 210,
         ]);
 
         AuditLog::create([
@@ -329,92 +258,123 @@ class PurchaseRequestController extends Controller
             'user_agent' => request()->userAgent(),
         ]);
 
-        return redirect()->route('purchase-requests.index')->with('success', 'Purchase Request has been proceed to canvassing.');
+        return redirect()->route('purchase-orders.index')->with('success', 'Purchase Request has been proceed to canvassing.');
     }
 
     /**
      * Generate a PO Number.
      */
-    public function generatePONumber(Request $request, string $id)
+    public function generatePONumber(Request $request, PurchaseRequest $purchaseRequest)
     {
-        $pr = PurchaseRequest::findOrFail($id);
-        $year = now()->format('Y');
+        $validated = $request->validate([
+            'supplier' => ['required', 'string', 'max:255'],
+            'date_received' => ['required', 'date'],
+            'po_number_mode' => ['required', 'in:auto,manual'],
+            'po_number' => ['required_if:po_number_mode,manual', 'nullable', 'integer', 'min:1', 'max:99999'],
+        ]);
 
-        $baseRules = [
-            'supplier' => 'required|string|max:255',
-            'date_received' => 'required|date',
-            'po_number_mode' => 'required|in:auto,manual',
-        ];
+        // The PO row was already created upstream (verifyPO / status 200 → 220).
+        // Fetch it rather than making a second one.
+        $purchaseOrder = PurchaseOrder::where('PR_Number', $purchaseRequest->pr_number)->firstOrFail();
 
-        if ($request->input('po_number_mode') === 'manual') {
-            $validated = $request->validate(array_merge($baseRules, [
-                'po_number_input' => 'required|string|max:100|unique:purchase_orders,PO_Number',
-            ]));
+        if ($validated['po_number_mode'] === 'manual') {
+            $poNumber = sprintf('PO-%d-%05d', now()->year, (int)$validated['po_number']);
+
+            if (PurchaseOrder::where('PO_Number', $poNumber)->whereKeyNot($purchaseOrder->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'po_number' => "PO number {$poNumber} already exists.",
+                ]);
+            }
         } else {
-            $validated = $request->validate($baseRules);
+            $poNumber = $this->nextPoNumber((string)now()->year);
         }
 
-        $poNumber = $validated['po_number_mode'] === 'manual'
-            ? $validated['po_number_input']
-            : DB::transaction(function () use ($year) {
-                $last = PurchaseOrder::where('po_number', 'like', "PO-{$year}-%")
-                    ->lockForUpdate()
-                    ->orderByDesc('po_number')
-                    ->first();
-
-                $nextNumber = $last
-                    ? ((int)substr($last->po_number, -5)) + 1
-                    : 1;
-
-                return 'PO-' . $year . '-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
-            });
-
-
-        // Capture baseline data before alteration
-        $oldValues = [
-            'status' => $pr->status,
-        ];
-
-        // Create the PO record
-        $purchaseOrder = PurchaseOrder::create([
+        $purchaseOrder->update([
             'PO_Number' => $poNumber,
             'PO_Supplier' => $validated['supplier'],
-            'PO_Date' => now()->format('Y-m-d'),
-            'PR_Number' => $pr->pr_number,
             'supplier_receive_date' => $validated['date_received'],
+            'PO_Date' => now()->format('Y-m-d'), //current date,
             'poNumbered_by' => auth()->id(),
-            'status' => 220,
+            'status' => 230,    // whatever follows 220 in your flow
         ]);
 
-        // Keep PR status in sync
-        $pr->update([
-            'status' => 220,
-        ]);
+        $purchaseRequest->update(['status' => 230]);
 
-        AuditLog::create([
-            'user_id' => Auth::id(),
-            'action' => 'PO Generated',
-            'auditable_type' => PurchaseOrder::class,
-            'auditable_id' => $purchaseOrder->id,
-            'description' => "Generated PO number {$poNumber} for Purchase Request #{$pr->pr_number} "
-                . "(Supplier: {$validated['supplier']}, Received: {$validated['date_received']})",
-            'old_values' => $oldValues,
-            'new_values' => [
-                'status' => 210,
-                'po_number' => $poNumber,
-                'supplier' => $validated['supplier'],
-                'date_received_by_supplier' => $validated['date_received'],
-            ],
-            'ip_address' => request()->ip(),
-            'user_agent' => request()->userAgent(),
-        ]);
-
-        return redirect()
-            ->route('purchase-requests.show', ['purchase_request' => $pr->id])
-            ->with('success', "PO number {$poNumber} has been generated.")
-            ->with('po_number', $poNumber)
-            ->with('supplier', $validated['supplier'])
-            ->with('date_received', $validated['date_received']);
+        return back()->with('po_number', $poNumber);
     }
+
+
+    private function generatePrNumber(): string
+    {
+        $year = now()->year;
+
+        $latest = PurchaseRequest::whereYear('created_at', $year)
+            ->lockForUpdate()
+            ->orderByDesc('id')
+            ->value('pr_number');
+
+        $sequence = $latest ? ((int)substr($latest, -4)) + 1 : 1;
+
+        return sprintf('PR-%d-%04d', $year, $sequence);
+    }
+
+    private function nextPoNumber(string $year): string
+    {
+        // Column is PO_Number. MySQL is case-insensitive about column names in SQL,
+        // but Eloquent attribute access is not — `$last->po_number` returns null.
+        $usedSequences = PurchaseOrder::where('PO_Number', 'like', "PO-{$year}-%")
+            ->pluck('PO_Number')
+            ->map(fn(string $number) => (int)preg_replace('/^.*-/', '', $number))
+            ->flip();
+
+        $next = 1;
+        while ($usedSequences->has($next)) {
+            $next++;
+        }
+
+        return 'PO-' . $year . '-' . str_pad($next, 5, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * @throws ConnectionException
+     */
+    public function ocr(Request $request, PrTableParser $parser)
+    {
+        $request->validate([
+            'document' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:1024'],
+        ], [
+            'document.max' => 'That file is over 1 MB. Scan at a lower resolution or save as JPG.',
+        ]);
+
+        $file = $request->file('document');
+
+        $response = Http::timeout(120)
+            ->asMultipart()
+            ->attach('file', file_get_contents($file->getRealPath()), $file->getClientOriginalName())
+            ->post('https://api.ocr.space/parse/image', [
+                ['name' => 'apikey', 'contents' => config('services.ocrspace.key')],
+                ['name' => 'OCREngine', 'contents' => '2'],
+                ['name' => 'isTable', 'contents' => 'false'],
+                ['name' => 'language', 'contents' => 'eng'],
+            ]);
+
+        if ($response->failed() || $response->json('IsErroredOnProcessing')) {
+            Log::warning('OCR failed', ['body' => $response->body()]);
+
+            return response()->json([
+                'rows' => [],
+                'conditions' => [],
+                'message' => 'The scanning service could not read that file. Add the items by hand, or try a clearer scan.',
+            ], 422);
+        }
+
+        $parsed = $parser->parse($response->json('ParsedResults.0.ParsedText') ?? '');
+
+        return response()->json([
+            'rows' => $parsed['items'],
+            'conditions' => $parsed['conditions'],
+        ]);
+    }
+
 
 }

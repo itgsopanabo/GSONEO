@@ -24,7 +24,7 @@ class RoleSeeder extends Seeder
             ['role_name' => 'PR Verifier', 'section' => 'Procurement'],
             ['role_name' => 'PO Officer', 'section' => 'Procurement'],
             ['role_name' => 'Canvas Officer', 'section' => 'Procurement'],
-            ['role_name' => 'PO Receiver', 'section' => 'Procurement'],
+            ['role_name' => 'PR Encoder', 'section' => 'Procurement'],
 
             // Motor Pool Group
             ['role_name' => 'Dispatcher', 'section' => 'Motor Pool'],
@@ -37,6 +37,7 @@ class RoleSeeder extends Seeder
             ['role_name' => 'Encoder(RIS)', 'section' => 'Inventory and Sales'],
             ['role_name' => 'Encoder(SSMI)', 'section' => 'Inventory and Sales'],
             ['role_name' => 'Encoder(IAR)', 'section' => 'Inventory and Sales'],
+            ['role_name' => 'Stock Custodian', 'section' => 'Inventory and Sales'],
 
             // Records Group
 

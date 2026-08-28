@@ -403,8 +403,33 @@
 @endforeach
 
 <script>
+    // Trigger the print dialog once the page has finished rendering.
     window.addEventListener('DOMContentLoaded', () => {
         window.print();
+    });
+
+    // ---- Best-effort refresh blocking -------------------------------
+    // Browsers intentionally do not allow JavaScript to fully disable
+    // page refresh (F5 / the reload button) — this is a deliberate
+    // security restriction, not a limitation we can code around. What
+    // follows is the maximum available: intercepting the common
+    // keyboard shortcuts, and asking the browser to show its native
+    // "leave site?" confirmation before a refresh/close/navigation goes
+    // through. A user can still confirm past that native dialog, and
+    // clicking the browser's own reload button cannot be intercepted at
+    // all — only keyboard shortcuts can be caught this way.
+
+    window.addEventListener('keydown', function (e) {
+        const isF5 = e.key === 'F5';
+        const isCtrlR = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r';
+        if (isF5 || isCtrlR) {
+            e.preventDefault();
+        }
+    });
+
+    window.addEventListener('beforeunload', function (e) {
+        e.preventDefault();
+        e.returnValue = '';
     });
 </script>
 </body>

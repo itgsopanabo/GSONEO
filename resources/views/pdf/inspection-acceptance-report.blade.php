@@ -41,7 +41,7 @@
 <table class="header-table" width="100%">
     <tr>
         <td><strong>Supplier:</strong> {{ $purchaseOrder->PO_Supplier ?? '—' }}</td>
-        <td><strong>IAR No.:</strong> {{ $purchaseOrder->id }}</td>
+        <td><strong>IAR No.:</strong> {{ $iarNumber }}</td>
     </tr>
     <tr>
         <td><strong>PO No.:</strong> {{ $purchaseOrder->PO_Number ?? $purchaseOrder->id }}</td>

@@ -22,7 +22,7 @@ class DatabaseSeeder extends Seeder
             DepartmentSeeder::class,
             RoleSeeder::class,
             StatusSeeder::class,
-            PurchaseRequestSeeder::class,
+//            PurchaseRequestSeeder::class,
         ]);
 
         User::create([
@@ -30,7 +30,7 @@ class DatabaseSeeder extends Seeder
             'emp_lname' => 'Doe',
             'emp_id' => '32165',
             'password' => Hash::make('password123'),
-            'role_id' => 1, // Set explicitly to 1
+            'role_id' => 4, // Set explicitly to 1
         ]);
 
         User::create([

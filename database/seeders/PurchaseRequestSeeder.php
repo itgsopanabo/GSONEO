@@ -15,7 +15,7 @@ class PurchaseRequestSeeder extends Seeder
         // 1. Create a PR with many items
         PurchaseRequest::factory()
             // Use the Model factory here, not the PurchaseRequestFactory
-            ->has(PurchaseRequestItem::factory()->count(5), 'items')
+            ->has(PurchaseRequestItem::factory()->count(50), 'items')
             ->create([
                 'pr_number' => 'PR-2026-LONG-001',
                 'requester_name' => 'John Doe'

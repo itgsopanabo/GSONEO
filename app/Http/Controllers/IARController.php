@@ -18,7 +18,7 @@ class IARController extends Controller
     public function index()
     {
         $purchaseOrders = PurchaseOrder::with(['purchaseRequest.items'])
-            ->where('status', 300)
+            ->whereIn('status', [300, 400, 500])
             ->latest()
             ->paginate(15);
 
@@ -83,29 +83,6 @@ class IARController extends Controller
         ]);
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(IAR $iAR)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, IAR $iAR)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(IAR $iAR)
-    {
-        //
-    }
 
     public function generatePdf(Request $request, PurchaseOrder $purchaseOrder)
     {
@@ -115,7 +92,23 @@ class IARController extends Controller
         // Ensure IDs are integers so they match database primary keys cleanly
         $selectedItemIds = $itemIdsString ? array_map('intval', explode(',', $itemIdsString)) : [];
 
-        $iarNumber = $purchaseOrder->iar_number ?? 'IAR-' . date('Y') . '-' . $purchaseOrder->id;
+        $year = date('Y');
+
+        // Find the latest record created this year from the IAR model/table
+        $lastRecord = IAR::whereYear('created_at', $year)
+            ->latest('id')
+            ->first();
+
+        if ($lastRecord) {
+            // Extract the numeric portion from the last IAR number (e.g., "IAR-2026-005" -> 5)
+            $parts = explode('-', $lastRecord->iar_number);
+            $nextSequence = intval(end($parts)) + 1;
+        } else {
+            // Fallback if no records exist for this year yet
+            $nextSequence = 1;
+        }
+
+        $iarNumber = 'IAR-' . $year . '-' . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
 
         // Explicitly query the purchase request and its items manually using the PR_Number string
         $items = [];
@@ -129,17 +122,28 @@ class IARController extends Controller
             }
         }
 
+
+        IAR::create([
+            'iar_number' => $iarNumber,
+            'invoice_number' => $invoiceNumber,
+            'PO_Number' => $purchaseOrder->PO_Number,
+        ]);
+        PurchaseOrder::where('PO_Number', $purchaseOrder->PO_Number)->update([
+            'status' => 400,
+        ]);
+
+        $iar = IAR::where('PO_Number', $purchaseOrder->PO_Number)
+            ->latest()
+            ->first();
+
         $pdf = PDF::loadView('pdf.inspection-acceptance-report', [
             'purchaseOrder' => $purchaseOrder,
             'invoiceNumber' => $invoiceNumber,
             'invoiceDate' => $invoiceDate,
-            'iarNumber' => $iarNumber,
+            'iarNumber' => $iar->iar_number,
             'items' => $items,
         ]);
 
-//        Update to status 400
-        {/*TODO Uncomment when we want to proceed to RIS Numbering*/}
-//        $purchaseOrder->update(['status' => 400]);
 
         return $pdf->stream("IAR-{$purchaseOrder->id}.pdf");
     }

@@ -14,12 +14,16 @@ class StatusSeeder extends Seeder
     {
         $statuses = [
             // Workflow (PR Pipeline)
-            ['status_code' => 0, 'status_desc' => 'Pending', 'created_at' => now(), 'updated_at' => now()],
+            ['status_code' => 0, 'status_desc' => 'Draft', 'created_at' => now(), 'updated_at' => now()],
+            ['status_code' => 1, 'status_desc' => 'Pending', 'created_at' => now(), 'updated_at' => now()],
             ['status_code' => 100, 'status_desc' => 'Verified', 'created_at' => now(), 'updated_at' => now()],
+            ['status_code' => 110, 'status_desc' => 'Verified for PhilGeps/RFQ', 'created_at' => now(), 'updated_at' => now()],
+            ['status_code' => 120, 'status_desc' => 'Verified for Public Bidding', 'created_at' => now(), 'updated_at' => now()],
+            ['status_code' => 130, 'status_desc' => 'Verified for Agency to Agency', 'created_at' => now(), 'updated_at' => now()],
             ['status_code' => 200, 'status_desc' => 'Canvassing', 'created_at' => now(), 'updated_at' => now()],
+            ['status_code' => 205, 'status_desc' => 'Printed Canvas', 'created_at' => now(), 'updated_at' => now()],
 
-            ['status_code' => 210, 'status_desc' => 'Proceed to PO', 'created_at' => now(), 'updated_at' => now()],
-            ['status_code' => 220, 'status_desc' => 'PO Proceedings', 'created_at' => now(), 'updated_at' => now()],
+            ['status_code' => 210, 'status_desc' => 'Receive Purchase Order', 'created_at' => now(), 'updated_at' => now()],
             ['status_code' => 230, 'status_desc' => 'PO Generated', 'created_at' => now(), 'updated_at' => now()],
 
             ['status_code' => 300, 'status_desc' => 'For Inspection', 'created_at' => now(), 'updated_at' => now()],
