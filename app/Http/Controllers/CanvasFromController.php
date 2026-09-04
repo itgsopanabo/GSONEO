@@ -40,7 +40,7 @@ class CanvasFromController extends Controller
             'user_agent' => request()->userAgent(),
         ]);
 
-        return Inertia::render('Canvas/Index', compact('purchaseRequests'));
+        return Inertia::render('Procurement/Canvas/Index', compact('purchaseRequests'));
     }
 
     /**

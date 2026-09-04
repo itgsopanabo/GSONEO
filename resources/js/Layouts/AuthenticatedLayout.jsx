@@ -110,19 +110,22 @@ export default function AuthenticatedLayout({header, children}) {
                             <div className="hidden md:flex flex-col space-y-5 mt-6">
 
                                 {/* General Items Section */}
-                                <div className="flex flex-col space-y-1">
+                                {auth.user.role.section !== 'Administration' && (
 
                                     <div className="flex flex-col space-y-1">
-                                        <p className="px-3 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                                            General
-                                        </p>
 
-                                        <NavLink href={route('dashboard')} active={route().current('dashboard')}
-                                                 className="w-full justify-start py-2">
-                                            Dashboard
-                                        </NavLink>
-                                    </div>
-                                </div>
+                                        <div className="flex flex-col space-y-1">
+                                            <p className="px-3 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                                                General
+                                            </p>
+
+                                            <NavLink href={route('dashboard')} active={route().current('dashboard')}
+                                                     className="w-full justify-start py-2">
+                                                Dashboard
+                                            </NavLink>
+
+                                        </div>
+                                    </div>)}
 
                                 {/* ADMIN / MONITORING VIEW */}
                                 {auth.user.role.section === 'Administration' && (
@@ -131,61 +134,51 @@ export default function AuthenticatedLayout({header, children}) {
                                             Monitoring Modules
                                         </p>
 
-                                        {/* Procurement Monitoring */}
-                                        <NavLink href={route('purchase-requests.index')}
-                                                 active={route().current('purchase-requests.*')}
-                                                 className="w-full justify-start py-2 text-xs">
-                                            Purchase Request
+                                        <NavLink href={route('request-monitoring.index')}
+                                                 active={route().current('request-monitoring.index')}
+                                                 className="w-full justify-start py-2">
+                                            Analytics
                                         </NavLink>
-
-
-                                        {/* Stocks Monitoring */}
-                                        <NavLink href={route('inventory.index')}
-                                                 active={route().current('inventory.index')}
-                                                 className="w-full justify-start py-2 text-xs">
-                                            Inventory
+                                        <NavLink href={route('custom-reports.index')}
+                                                 active={route().current('custom-reports.index')}
+                                                 className="w-full justify-start py-2">
+                                            Report Builder
                                         </NavLink>
-
-                                        <NavLink href={route('inspection-acceptance-reports.index')}
-                                                 active={route().current('inspection-acceptance-reports.index')}
-                                                 className="w-full justify-start py-2 text-xs">
-                                            Inspection & Acceptance Report
-                                        </NavLink>
-
-                                        {/* Motor pool Monitoring */}
-                                        <NavLink href="#" active={false} className="w-full justify-start py-2 text-xs">
-                                            Motorpool
-                                        </NavLink>
-
-                                        {/* Records Monitoring */}
-                                        <NavLink href="#" active={false} className="w-full justify-start py-2 text-xs">
-                                            Archives
+                                        <NavLink href={route('sql-console.index')}
+                                                 active={route().current('sql-console.index')}
+                                                 className="w-full justify-start py-2">
+                                            SQL Console
                                         </NavLink>
                                     </div>)}
 
 
-                                {auth.user.role.section === 'Sys Admin' && auth.user.role.id === 1 && (
-                                    <NavDropdown label="Utils" defaultOpen={route().current('items.*')}>
-
-
-                                        {auth.user.role.id === 1 && (<div className="flex flex-col space-y-1">
+                                {/* Once 'manageUsers' is shared from HandleInertiaRequests, swap this
+                                    condition for auth.can.manageUsers so the menu and the route guard
+                                    read from the same gate instead of duplicating the rule. */}
+                                {auth.user.role?.section === 'Sys Admin' && auth.user.role?.id === 1 && (
+                                    <NavDropdown label="Utils"
+                                                 defaultOpen={route().current('items.*') || route().current('record-classes.*') || route().current('users.*')}>
+                                        <div className="flex flex-col space-y-1">
                                             <NavLink href={route('items.index')}
                                                      active={route().current('items.*')}
                                                      className="w-full justify-start py-2 text-xs">
                                                 Items Catalogue
                                             </NavLink>
 
-
-                                            <NavLink
-
-                                                className="w-full justify-start py-2 text-xs">
-                                                User List
+                                            <NavLink href={route('record-classes.index')}
+                                                     active={route().current('record-classes.*')}
+                                                     className="w-full justify-start py-2 text-xs">
+                                                Record Classes
                                             </NavLink>
 
-                                        </div>)}
-
-                                        {/* room for Users, Roles, Sections, etc. */}
+                                            <NavLink href={route('users.index')}
+                                                     active={route().current('users.*')}
+                                                     className="w-full justify-start py-2 text-xs">
+                                                User List
+                                            </NavLink>
+                                        </div>
                                     </NavDropdown>)}
+
 
                                 {/* Procurement Group (Hidden for Admin) */}
                                 {auth.user.role.section === 'Procurement' && (<>
@@ -287,6 +280,13 @@ export default function AuthenticatedLayout({header, children}) {
                                         <p className="px-3 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                                             Records Management
                                         </p>
+                                        <NavLink
+                                            href={route('records.index')}
+                                            active={route().current('records.*')}
+                                            className="w-full justify-start py-2 text-xs"
+                                        >
+                                            Records Registry
+                                        </NavLink>
                                         <NavLink href="#" active={false} className="w-full justify-start py-2 text-xs">
                                             Docket Management
                                         </NavLink>

@@ -15,7 +15,7 @@ class RoleSeeder extends Seeder
         // Using an associative array lets you keep clean slugs for code
         // while preserving your exact formatting for the display name.
         $roles = [
-            ['role_name' => 'Superadmin', 'section' => 'Administration'],
+            ['role_name' => 'Superadmin', 'section' => 'Sys Admin'],
             ['role_name' => 'Department Head', 'section' => 'Administration'],
 
             // Procurement Group

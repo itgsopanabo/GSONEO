@@ -30,7 +30,7 @@ return new class extends Migration
             $table->string('emp_fname');
             $table->string('emp_lname');
             $table->foreignId('role_id')->constrained('role');
-            $table->foreignId('status_id')->default(9)->constrained('status');
+            $table->foreignId('status_id')->default(17)->constrained('status');
             $table->string('password');
             $table->rememberToken();
             $table->timestamps();

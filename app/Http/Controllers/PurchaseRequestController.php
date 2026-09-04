@@ -2,18 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StorePurchaseRequestRequest;
 use App\Models\AuditLog;
 use App\Models\Departments;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
 use App\Services\PrTableParser;
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -35,7 +34,7 @@ class PurchaseRequestController extends Controller
 
         // PR Verifier
         if ($user && in_array($user->role_id, [3, 4])) {
-            $query->where('status', 1);
+            $query->whereIn('status', [0,1]);
         }
 
         // Canvas Officer
@@ -74,26 +73,20 @@ class PurchaseRequestController extends Controller
     /**
      * @throws \Throwable
      */
-    public function store(Request $request)
+    public function store(StorePurchaseRequestRequest $request)
     {
-        $data = $request->validate([
-            'requester_name' => ['required', 'string', 'max:255'],
-            'requester_department' => ['required', 'string', 'max:255'],
-            'remarks_or_notes' => ['required', 'string', 'max:2000'],
-        ]);
-
-        $purchaseRequest = DB::transaction(function () use ($data) {
+        $purchaseRequest = DB::transaction(function () use ($request) {
             return PurchaseRequest::create([
-                ...$data,
+                ...$request->validated(),
                 'pr_number' => $this->generatePrNumber(),
-                'status' => 0, // ← confirm this, see note below
+                'status'    => 0,
             ]);
         });
 
         return back()
             ->with('success', "Purchase request {$purchaseRequest->pr_number} created.")
             ->with('created_pr', [
-                'id' => $purchaseRequest->id,
+                'id'        => $purchaseRequest->id,
                 'pr_number' => $purchaseRequest->pr_number,
             ]);
     }
@@ -375,6 +368,5 @@ class PurchaseRequestController extends Controller
             'conditions' => $parsed['conditions'],
         ]);
     }
-
 
 }

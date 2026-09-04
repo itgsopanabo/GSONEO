@@ -22,7 +22,7 @@ class IARController extends Controller
             ->latest()
             ->paginate(15);
 
-        return Inertia::render('IAR/Index', compact('purchaseOrders'));
+        return Inertia::render('Inventory/IAR/Index', compact('purchaseOrders'));
     }
 
     /**
@@ -59,7 +59,7 @@ class IARController extends Controller
             DB::commit();
 
             return redirect()
-                ->route('iar.index')
+                ->route('inspection-acceptance-reports.index')
                 ->with('success', "IAR #{$iarNumber} successfully created.");
 
         } catch (\Exception $e) {

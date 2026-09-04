@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
-use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -42,7 +42,7 @@ class LoginRequest extends FormRequest
         $password = $this->input('password');
 
         // 1. Check if the Employee ID even exists in the database
-        $user = \App\Models\User::where('emp_id', $empId)->first();
+        $user = User::where('emp_id', $empId)->first();
 
         if (!$user) {
             RateLimiter::hit($this->throttleKey());
@@ -63,6 +63,18 @@ class LoginRequest extends FormRequest
 
             throw ValidationException::withMessages([
                 'password' => 'The password you entered is incorrect.',
+            ]);
+        }
+
+        // 3. Only active accounts may proceed. Checked after the password so a
+        //    wrong password never reveals whether an account is deactivated.
+        if (!Auth::user()->isActive()) {
+            Auth::logout();
+            $this->session()->invalidate();
+            $this->session()->regenerateToken();
+
+            throw ValidationException::withMessages([
+                'empID' => 'This account is inactive. Please contact an administrator.',
             ]);
         }
 

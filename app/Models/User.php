@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,11 +11,12 @@ use Illuminate\Notifications\Notifiable;
 /**
  * @method static create(array $array)
  * @property mixed $role
+ * @property mixed $status
  */
 class User extends Authenticatable
 {
 
-    protected $with = ['role'];
+    protected $with = ['role', 'status'];
 
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
@@ -30,6 +30,7 @@ class User extends Authenticatable
         'password',
         'emp_id',
         'role_id',
+        'status_id',
         'emp_fname',
         'emp_lname',
     ];
@@ -52,7 +53,6 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
     }
@@ -62,13 +62,30 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class, 'role_id');
     }
 
+    public function status(): BelongsTo
+    {
+        return $this->belongsTo(Status::class, 'status_id');
+    }
 
     /**
      * Check if the user has a specific role.
+     *
+     * Careful: role_name is not unique — "Section Head" exists in four
+     * sections. Compare role_id when the distinction matters.
      */
     public function hasRole(string $roleName): bool
     {
         return $this->role && $this->role->role_name === $roleName;
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role_id === config('Users.sys_admin_role_id');
+    }
+
+    public function isActive(): bool
+    {
+        return (int) $this->status?->status_code === config('Users.active_status_code');
     }
 
     /**

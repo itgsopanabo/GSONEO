@@ -38,6 +38,9 @@ class HandleInertiaRequests extends Middleware
                     'canvass' => $request->user() ? $request->user()->can('canvass') : false,
                     'proceedPO' => $request->user() ? $request->user()->can('proceedPO') : false,
                     'proceedIAR' => $request->user() ? $request->user()->can('proceedIAR') : false,
+                    'viewRecords' => $request->user()?->can('records.view') ?? false,
+                    'viewRestrictedRecords' => $request->user()?->can('records.view_restricted') ?? false,
+                    'manageRecordClasses' => $request->user()?->can('record_classes.manage') ?? false,
                 ],
             ],
             'flash' => [

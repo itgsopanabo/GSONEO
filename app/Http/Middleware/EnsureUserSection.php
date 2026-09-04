@@ -8,6 +8,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnsureUserSection
 {
+
     /**
      * Handle an incoming request.
      *

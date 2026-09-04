@@ -1,7 +1,37 @@
 <?php
 
 use Illuminate\Support\Str;
-use Pdo\Mysql;
+
+/*
+|--------------------------------------------------------------------------
+| Shared MySQL Settings
+|--------------------------------------------------------------------------
+|
+| Defined as a plain variable rather than read back through config(), because
+| this file is evaluated while the config repository is still being built —
+| calling config() here returns null and unpacking null is a fatal error.
+|
+*/
+
+$mysql = [
+    'driver' => 'mysql',
+    'url' => env('DB_URL'),
+    'host' => env('DB_HOST', '127.0.0.1'),
+    'port' => env('DB_PORT', '3306'),
+    'database' => env('DB_DATABASE', 'laravel'),
+    'username' => env('DB_USERNAME', 'root'),
+    'password' => env('DB_PASSWORD', ''),
+    'unix_socket' => env('DB_SOCKET', ''),
+    'charset' => env('DB_CHARSET', 'utf8mb4'),
+    'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+    'prefix' => '',
+    'prefix_indexes' => true,
+    'strict' => true,
+    'engine' => null,
+    'options' => extension_loaded('pdo_mysql') ? array_filter([
+        (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+    ]) : [],
+];
 
 return [
 
@@ -44,25 +74,17 @@ return [
             'transaction_mode' => 'DEFERRED',
         ],
 
-        'mysql' => [
-            'driver' => 'mysql',
-            'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '3306'),
-            'database' => env('DB_DATABASE', 'laravel'),
-            'username' => env('DB_USERNAME', 'root'),
-            'password' => env('DB_PASSWORD', ''),
-            'unix_socket' => env('DB_SOCKET', ''),
-            'charset' => env('DB_CHARSET', 'utf8mb4'),
-            'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
-            'prefix' => '',
-            'prefix_indexes' => true,
-            'strict' => true,
-            'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
-                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
-            ]) : [],
-        ],
+        'mysql' => $mysql,
+
+        /*
+         * Same server and database as 'mysql', but authenticating as a user
+         * granted only SELECT. This is what the SQL console runs on — a write
+         * fails at the database regardless of what the application allows.
+         */
+        'mysql_readonly' => array_merge($mysql, [
+            'username' => env('DB_READONLY_USERNAME'),
+            'password' => env('DB_READONLY_PASSWORD'),
+        ]),
 
         'mariadb' => [
             'driver' => 'mariadb',

@@ -21,7 +21,7 @@ class RISController extends Controller
             ->paginate(15);
 
 //        dd($purchaseOrders);
-        return Inertia::render('RIS/Index', compact('purchaseOrders'));
+        return Inertia::render('Inventory/RIS/Index', compact('purchaseOrders'));
     }
 
 
@@ -93,7 +93,7 @@ class RISController extends Controller
     {
         $purchaseOrder = PurchaseOrder::with(['purchaseRequest.items'])->findOrFail($id);
 
-        return Inertia::render('RIS/Show', compact('purchaseOrder'));
+        return Inertia::render('Inventory/RIS/Show', compact('purchaseOrder'));
     }
 
 

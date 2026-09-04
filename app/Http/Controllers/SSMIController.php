@@ -20,7 +20,7 @@ class SSMIController extends Controller
             ->latest()
             ->paginate(15);
 
-        return Inertia::render('SSMI/Index', compact('purchaseOrders'));
+        return Inertia::render('Inventory/SSMI/Index', compact('purchaseOrders'));
     }
 
     public function generateNumber(PurchaseOrder $purchaseOrder)
@@ -71,7 +71,7 @@ class SSMIController extends Controller
         ]);
 
         return redirect()
-            ->route('ris.index')
+            ->route('ssmi.index')
             ->with('success', 'SSMI number generated successfully.')
             ->with('ssmi_number', $purchaseOrder->SSMI_Number);
     }
@@ -102,7 +102,7 @@ class SSMIController extends Controller
             'user_agent'     => request()->userAgent(),
         ]);
 
-        return redirect()->route('ris.index')
+        return redirect()->route('ssmi.index')
             ->with('success', 'Order moved to outgoing.');
     }
 }

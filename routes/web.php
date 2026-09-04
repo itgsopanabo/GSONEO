@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CanvasFromController;
+use App\Http\Controllers\CustomReportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EncodingController;
 use App\Http\Controllers\IARController;
@@ -12,8 +13,13 @@ use App\Http\Controllers\Others\LeaveController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseRequestController;
+use App\Http\Controllers\RecordsClassesController;
+use App\Http\Controllers\RecordsController;
+use App\Http\Controllers\RequestMonitoringController;
 use App\Http\Controllers\RISController;
+use App\Http\Controllers\SqlConsoleController;
 use App\Http\Controllers\SSMIController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [AuthenticatedSessionController::class, 'create'])
@@ -22,7 +28,7 @@ Route::get('/', [AuthenticatedSessionController::class, 'create'])
 Route::get('/pls', fn() => view('pdf/pls'))->name('pls');
 
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
@@ -146,7 +152,46 @@ Route::middleware('auth')->group(function () {
     Route::resource('inventory', InventoryController::class)
         ->middleware('section:Inventory and Sales');
 
-//    ADMIN/SUPERADMIN/IT
+
+    //    ADMIN/SUPERADMIN/IT
+    Route::get('/request-monitoring', [RequestMonitoringController::class, 'index'])
+        ->name('request-monitoring.index');
+    Route::get('/request-monitoring/{id}', [RequestMonitoringController::class, 'show'])
+        ->name('request-monitoring.show');
+
+
+    Route::middleware('can:records.view')->group(function () {
+        Route::resource('records', RecordsController::class)->except(['create', 'edit', 'destroy']);
+        Route::patch('records/{record}/archive', [RecordsController::class, 'archive'])->name('records.archive');
+        Route::patch('records/{record}/unarchive', [RecordsController::class, 'unarchive'])->name('records.unarchive');
+    });
+
+    Route::middleware(['can:record_classes.manage'])->group(function () {
+        Route::resource('record-classes', RecordsClassesController::class)
+            ->except(['create', 'edit'])
+            ->parameters(['record-classes' => 'recordClass']);
+
+        Route::patch('record-classes/{recordClass}/deactivate', [RecordsClassesController::class, 'deactivate'])
+            ->name('record-classes.deactivate');
+        Route::patch('record-classes/{recordClass}/reactivate', [RecordsClassesController::class, 'reactivate'])
+            ->name('record-classes.reactivate');
+    });
+
+    Route::get('/custom-reports', [CustomReportController::class, 'index'])
+        ->name('custom-reports.index');
+
+    Route::get('/sql-console', [SqlConsoleController::class, 'index'])
+        ->middleware('auth')
+        ->name('sql-console.index');
+
+
+    Route::middleware('can:users.manage')->group(function () {
+        Route::patch('users/{user}/status', [UserController::class, 'updateStatus'])
+            ->name('users.status');
+
+        Route::resource('users', UserController::class);
+    });
+
     Route::get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
 
     Route::post('items/bulk', [ItemsController::class, 'bulkStore'])->name('items.bulk');

@@ -1,192 +1,237 @@
-import Checkbox from '@/Components/Checkbox';
-import InputError from '@/Components/InputError';
-import InputLabel from '@/Components/InputLabel';
-import PrimaryButton from '@/Components/PrimaryButton';
-import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 
+/**
+ * Palette (kept inline so it doesn't depend on tailwind.config changes):
+ *   ink      #151A1E   text + primary button
+ *   muted    #5A6570   labels, secondary copy
+ *   rule     #E2E6E4   hairlines
+ *   accent   #1D6F63   focus, links      (dark: #4FB3A2)
+ *   warn     #7A5312   lockout notice
+ *   danger   #B3261E   field errors
+ */
 
-export default function Login({ status, canResetPassword, canRegister, laravelVersion, phpVersion }) {
-    const { data, setData, post, processing,setError, errors, reset } = useForm({
-        empID: '', password: '', remember: false,
+function Field({ label, htmlFor, invalid = false, children }) {
+    return (
+        <div
+            className={
+                "relative flex items-center gap-4 px-4 py-3.5 transition-colors motion-reduce:transition-none " +
+                "after:absolute after:inset-y-1.5 after:left-0 after:w-[3px] after:rounded-full after:bg-transparent after:content-[''] " +
+                'focus-within:bg-[#1D6F63]/[0.04] focus-within:after:bg-[#1D6F63] ' +
+                'dark:focus-within:bg-[#4FB3A2]/[0.07] dark:focus-within:after:bg-[#4FB3A2] ' +
+                (invalid ? 'bg-[#B3261E]/[0.04] dark:bg-[#B3261E]/[0.10]' : '')
+            }
+        >
+            <label
+                htmlFor={htmlFor}
+                className="w-[104px] shrink-0 text-[13px] text-[#5A6570] dark:text-zinc-400"
+            >
+                {label}
+            </label>
+            {children}
+        </div>
+    );
+}
+
+export default function Login({ status, canResetPassword, canRegister }) {
+    const { data, setData, post, processing, errors, clearErrors, reset } = useForm({
+        empID: '',
+        password: '',
+        remember: false,
     });
 
-    // Local state to keep track of the countdown seconds
-    const [secondsLeft, setSecondsLeft] = useState(null);
+    const [showPassword, setShowPassword] = useState(false);
+    const [lockUntil, setLockUntil] = useState(0);
+    const [secondsLeft, setSecondsLeft] = useState(0);
 
+    const locked = secondsLeft > 0;
+    // While locked, the throttle message lives in the banner, not under the field.
+    const empIDError = locked ? null : errors.empID;
 
-    // Watch errors.empID for a throttling message
+    // Read the lockout window out of Laravel's throttle message once, then run
+    // the countdown off a deadline so it can't drift or double-tick.
     useEffect(() => {
-        if (errors.empID && errors.empID.includes('try again in')) {
-            // Regex to grab the number out of the backend string
-            const match = errors.empID.match(/\d+/);
-            if (match && secondsLeft === null) {
-                setSecondsLeft(parseInt(match[0], 10));
-            }
-        } else {
-            setSecondsLeft(null);
+        const match = errors.empID?.match(/(\d+)\s*second/i);
+        if (match) {
+            setLockUntil(Date.now() + Number(match[1]) * 1000);
         }
     }, [errors.empID]);
 
-
-    // Handle the live second-by-second countdown timer
     useEffect(() => {
-        if (secondsLeft === null) return;
+        if (!lockUntil) return;
 
-        if (secondsLeft <= 0) {
-            setSecondsLeft(null);
-            // Clear the error message once the countdown hits zero
-            setError('empID', '');
-            return;
-        }
+        const tick = () => {
+            const left = Math.max(0, Math.ceil((lockUntil - Date.now()) / 1000));
+            setSecondsLeft(left);
+            if (left === 0) {
+                setLockUntil(0);
+                clearErrors('empID');
+            }
+        };
 
-        const timer = setTimeout(() => {
-            setSecondsLeft(prev => prev - 1);
-            // Update the displayed message dynamically
-            setError('empID', `Too many login attempts. Please try again in ${secondsLeft - 1} seconds.`);
-        }, 1000);
+        tick();
+        const id = setInterval(tick, 500);
+        return () => clearInterval(id);
+    }, [lockUntil]);
 
-        return () => clearTimeout(timer);
-    }, [secondsLeft]);
     const submit = (e) => {
         e.preventDefault();
-
+        if (locked) return;
 
         post(route('login'), {
             onFinish: () => reset('password'),
         });
     };
 
+    const inputBase =
+        'w-full min-w-0 border-0 bg-transparent p-0 text-[15px] text-[#151A1E] ' +
+        'focus:outline-none focus:ring-0 disabled:text-[#A3ABB2] dark:text-zinc-50';
+
     return (
         <GuestLayout>
-            <Head title="Log in" />
+            <Head title="Sign in" />
 
-            {/* Header Branding Section */}
-            <div className="mb-8 text-center">
-                <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-zinc-50">
-                    Welcome Back
-                </h2>
-                <p className="mt-2 text-sm text-gray-500 dark:text-zinc-400">
-                    Sign in to access your employee portal
+            <div className="mb-7">
+                <h1 className="text-[22px] font-semibold tracking-tight text-[#151A1E] dark:text-zinc-50">
+                    Sign in
+                </h1>
+                <p className="mt-1.5 text-[14px] leading-relaxed text-[#5A6570] dark:text-zinc-400">
+                    Use the employee ID printed on your badge.
                 </p>
             </div>
 
             {status && (
-                <div className="mb-6 p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900/50 rounded-xl text-sm font-medium text-green-600 dark:text-green-400 backdrop-blur-sm">
+                <div
+                    role="status"
+                    className="mb-5 rounded-xl border border-[#C7DED9] bg-[#F1F8F6] px-4 py-3 text-[13px] leading-relaxed text-[#1D6F63] dark:border-[#4FB3A2]/30 dark:bg-[#4FB3A2]/10 dark:text-[#7FD0C1]"
+                >
                     {status}
                 </div>
             )}
 
-            <form onSubmit={submit} className="space-y-5">
-                {/* Employee ID Input */}
-                <div className="space-y-1.5">
-                    <InputLabel htmlFor="empID" value="Employee ID" className="text-xs uppercase font-semibold tracking-wider text-gray-500 dark:text-zinc-400" />
-                    <div className="relative group">
-                        <TextInput
+            {locked && (
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className="mb-5 rounded-xl border border-[#E7D9BC] bg-[#FBF6EC] px-4 py-3 text-[13px] leading-relaxed text-[#7A5312] dark:border-[#B98A2E]/35 dark:bg-[#B98A2E]/10 dark:text-[#DDB86A]"
+                >
+                    Too many sign-in attempts. You can try again in{' '}
+                    <span className="font-mono tabular-nums">{secondsLeft}</span>{' '}
+                    {secondsLeft === 1 ? 'second' : 'seconds'}.
+                </div>
+            )}
+
+            <form onSubmit={submit} noValidate>
+                <div
+                    className={
+                        'divide-y overflow-hidden rounded-2xl border bg-white dark:bg-zinc-900/40 ' +
+                        (empIDError || errors.password
+                            ? 'divide-[#EBD3D1] border-[#E3BDBA] dark:divide-zinc-800 dark:border-[#B3261E]/40'
+                            : 'divide-[#E2E6E4] border-[#E2E6E4] dark:divide-zinc-800 dark:border-zinc-800')
+                    }
+                >
+                    <Field label="Employee ID" htmlFor="empID" invalid={!!empIDError}>
+                        <input
                             id="empID"
+                            name="empID"
                             type="text"
                             inputMode="numeric"
-                            name="empID"
+                            autoComplete="username"
+                            autoFocus
+                            disabled={locked}
                             value={data.empID}
-                            className="mt-1 block w-full rounded-xl border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-200 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm placeholder-gray-400"
-                            placeholder="Enter your ID number"
-                            autoComplete="empID"
-                            isFocused={true}
-                            pattern="[0-9]*"
-                            onChange={(e) => setData('empID', e.target.value)}
+                            aria-invalid={!!empIDError}
+                            aria-describedby={empIDError ? 'empID-error' : undefined}
+                            onChange={(e) => setData('empID', e.target.value.replace(/\D/g, ''))}
+                            placeholder="e.g. 100482"
+                            className={
+                                inputBase +
+                                ' font-mono text-[17px] tracking-[0.18em] tabular-nums ' +
+                                'placeholder:font-sans placeholder:text-[13px] placeholder:tracking-normal placeholder:text-[#A3ABB2]'
+                            }
                         />
-                    </div>
-                    <InputError message={errors.empID} className="mt-1 text-xs" />
+                    </Field>
+
+                    <Field label="Password" htmlFor="password" invalid={!!errors.password}>
+                        <input
+                            id="password"
+                            name="password"
+                            type={showPassword ? 'text' : 'password'}
+                            autoComplete="current-password"
+                            disabled={locked}
+                            value={data.password}
+                            aria-invalid={!!errors.password}
+                            aria-describedby={errors.password ? 'password-error' : undefined}
+                            onChange={(e) => setData('password', e.target.value)}
+                            className={inputBase}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword((v) => !v)}
+                            aria-pressed={showPassword}
+                            className="shrink-0 rounded text-[12px] font-medium text-[#1D6F63] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1D6F63] focus-visible:ring-offset-2 dark:text-[#4FB3A2] dark:focus-visible:ring-offset-zinc-950"
+                        >
+                            {showPassword ? 'Hide' : 'Show'}
+                        </button>
+                    </Field>
                 </div>
 
-                {/* Password Input */}
-                <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                        <InputLabel htmlFor="password" value="Password" className="text-xs uppercase font-semibold tracking-wider text-gray-500 dark:text-zinc-400" />
-                        {/*{canResetPassword && (*/}
-                        {/*    <Link*/}
-                        {/*        href={route('password.request')}*/}
-                        {/*        className="text-xs text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors focus:outline-none"*/}
-                        {/*    >*/}
-                        {/*        Forgot password?*/}
-                        {/*    </Link>*/}
-                        {/*)}*/}
-                    </div>
-                    <TextInput
-                        id="password"
-                        type="password"
-                        name="password"
-                        value={data.password}
-                        className="mt-1 block w-full rounded-xl border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 transition-all duration-200 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm placeholder-gray-400"
-                        placeholder="••••••••"
-                        autoComplete="current-password"
-                        onChange={(e) => setData('password', e.target.value)}
-                    />
-                    <InputError message={errors.password} className="mt-1 text-xs" />
-                </div>
+                {(empIDError || errors.password) && (
+                    <p
+                        id={empIDError ? 'empID-error' : 'password-error'}
+                        aria-live="polite"
+                        className="mt-2.5 text-[13px] text-[#B3261E] dark:text-[#E4938D]"
+                    >
+                        {empIDError || errors.password}
+                    </p>
+                )}
 
-                {/* Remember Me Box */}
-                <div className="flex items-center justify-between pt-1">
-                    <label className="flex items-center group cursor-pointer select-none">
-                        <Checkbox
+                <div className="mt-5 flex items-center justify-between">
+                    <label className="flex cursor-pointer select-none items-center gap-2.5">
+                        <input
+                            type="checkbox"
                             name="remember"
                             checked={data.remember}
-                            className="rounded-md border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500 dark:bg-zinc-900 dark:border-zinc-700"
                             onChange={(e) => setData('remember', e.target.checked)}
+                            className="h-4 w-4 rounded border-[#CFD5D2] text-[#1D6F63] focus:ring-[#1D6F63] focus:ring-offset-0 dark:border-zinc-700 dark:bg-zinc-900 dark:text-[#4FB3A2]"
                         />
-                        <span className="ms-2 text-sm text-gray-600 dark:text-zinc-400 group-hover:text-gray-900 dark:group-hover:text-zinc-200 transition-colors">
+                        <span className="text-[13px] text-[#5A6570] dark:text-zinc-400">
                             Keep me signed in
                         </span>
                     </label>
+
+                    {/* Uncomment once the password reset route is live.
+                    {canResetPassword && (
+                        <Link
+                            href={route('password.request')}
+                            className="text-[13px] text-[#1D6F63] hover:underline dark:text-[#4FB3A2]"
+                        >
+                            Forgot password?
+                        </Link>
+                    )}
+                    */}
                 </div>
 
-                {/* Submit Action */}
-                <div className="pt-2">
-                    <PrimaryButton
-                        className="w-full h-11 justify-center rounded-xl font-semibold tracking-wide bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20 active:scale-[0.98] transition-all duration-150"
-                        disabled={processing}
-                    >
-                        {processing ? 'Signing in...' : 'Sign In'}
-                    </PrimaryButton>
-                </div>
+                <button
+                    type="submit"
+                    disabled={processing || locked}
+                    className="mt-6 h-12 w-full rounded-xl bg-[#151A1E] text-[15px] font-medium text-white transition-colors hover:bg-[#2A3238] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1D6F63] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none dark:bg-zinc-50 dark:text-[#151A1E] dark:hover:bg-white dark:focus-visible:ring-[#4FB3A2] dark:focus-visible:ring-offset-zinc-950"
+                >
+                    {processing ? 'Signing in…' : locked ? `Locked for ${secondsLeft}s` : 'Sign in'}
+                </button>
             </form>
 
-            {/* Separator Line */}
             {canRegister && (
-                <div className="relative my-8">
-                    <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                        <div className="w-full border-t border-gray-200/60 dark:border-zinc-800" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase font-medium tracking-widest">
-                        <span className="bg-gray-50 dark:bg-zinc-950 px-3 text-gray-400 dark:text-zinc-500">
-                            New Account
-                        </span>
-                    </div>
-                </div>
-            )}
-
-            {/* Bottom Register Action */}
-            {canRegister && (
-                <div className="text-center">
-                    <p className="text-sm text-gray-500 dark:text-zinc-400">
-                        Need access?{' '}
-                        <Link
-                            href={route('register')}
-                            className="font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 underline underline-offset-4 decoration-2 transition-colors focus:outline-none"
-                        >
-                            Create employee account
-                        </Link>
-                    </p>
-                </div>
-            )}
-
-            {/* Dynamic Framework Version Details */}
-            {laravelVersion && phpVersion && (
-                <footer className="mt-8 pt-4 border-t border-gray-100 dark:border-zinc-900 text-center text-[10px] font-mono tracking-wider text-gray-400 dark:text-zinc-600">
-                    Laravel v{laravelVersion} • PHP v{phpVersion}
-                </footer>
+                <p className="mt-8 border-t border-[#E2E6E4] pt-6 text-center text-[13px] text-[#5A6570] dark:border-zinc-800 dark:text-zinc-400">
+                    No account yet?{' '}
+                    <Link
+                        href={route('register')}
+                        className="font-medium text-[#1D6F63] hover:underline dark:text-[#4FB3A2]"
+                    >
+                        Create an employee account
+                    </Link>
+                </p>
             )}
         </GuestLayout>
     );

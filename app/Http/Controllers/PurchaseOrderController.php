@@ -68,18 +68,9 @@ class PurchaseOrderController extends Controller
             ['path' => request()->url(), 'query' => request()->query()]
         );
 
-        return Inertia::render('PurchaseOrder/Index', compact('purchaseOrders'));
+        return Inertia::render('Procurement/PurchaseOrder/Index', compact('purchaseOrders'));
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function show(PurchaseOrder $purchaseOrder)
-    {
-        $purchaseOrder->load(['purchaseRequest.items']);
-
-        return Inertia::render('PurchaseOrder/show', compact('purchaseOrder'));
-    }
 
     /**
      * Display the specified resource.

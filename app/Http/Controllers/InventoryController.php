@@ -71,7 +71,7 @@ class InventoryController extends Controller
         ]);
 
         return redirect()
-            ->route('inspection-acceptance-reports.index')
+            ->route('inventory.index')
             ->with('success', "PO #{$purchaseOrder->PO_Number} status updated successfully.");
     }
 

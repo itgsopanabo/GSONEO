@@ -27,9 +27,12 @@ class AppServiceProvider extends ServiceProvider
         Vite::prefetch(concurrency: 3);
 
 
+        Gate::define('record_classes.manage', fn($user) => $user->role?->id === 1);
+
         Gate::define('has-role', function (User $user, string $roleName) {
             return $user->hasRole($roleName);
         });
+
 
         Gate::define('verify-pr', function ($user) {
             return in_array($user->role->role_name, ['PR Verifier', 'Department Head', 'Section Head', 'Superadmin']);
@@ -55,7 +58,12 @@ class AppServiceProvider extends ServiceProvider
             return in_array($user->role->role_name, ['Encoder(RIS)', 'Department Head', 'Section Head', 'Superadmin']);
         });
 
+        Gate::define('records.view', fn($user) => in_array($user->role?->section, ['Records (Archives)', 'Sys Admin'], true));
 
+        Gate::define('users.manage', fn (User $user) => $user->id === 1);
+
+        // property custodian only — land titles and other restricted classes
+        Gate::define('records.view_restricted', fn($user) => in_array($user->role?->id, [1, /* add the custodian role id */], true));
 
         Session::extend('database', function ($app) {
             $table = $app['config']['session.table'];
