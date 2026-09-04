@@ -24,16 +24,18 @@
 
 ## About
 
-The **GSO Information System** is an internal web application built for the General Services Office (GSO) to streamline day-to-day operations. It centralizes and digitizes core GSO functions — **Procurement**, **Inventory**, and **Records Management** — replacing manual, paper-based tracking with a single, reliable system that improves accuracy, speeds up processing, and gives staff real-time visibility into office operations.
+The **GSO Information System** is an internal web application built for the General Services Office (GSO) to streamline day-to-day operations. It centralizes core GSO functions — **Procurement**, **Inventory**, and **Records Management** — replacing manual, paper-based tracking with a single, reliable system that improves accuracy, speeds up processing, and gives staff real-time visibility into office operations.
 
 ## Features
 
 | | |
 |---|---|
-| 📝 | Digital procurement requests with approval workflows |
-| 📦 | Real-time inventory tracking and stock level alerts |
-| 🗂️ | Centralized records management with searchable archives |
+| 📝 | Item encoding with OCR-assisted scanning, Purchase Request receiving, and Purchase Order numbering |
+| 📦 | Purchase Order receiving (incoming/outgoing) with RIS, SSMI, and IAR issuance |
+| 🗂️ | Storage tracking for physical documents submitted for archiving |
 | 👥 | Role-based access control for staff, approvers, and admins |
+| 🛠️ | System administration module for user, role, and system-wide moderation |
+| ⏱️ | Admin dashboard with request timeline tracking (received in Inventory → released) |
 | 📊 | Dashboards and reports for procurement and stock activity |
 | 🔔 | Notifications for pending approvals and low-stock items |
 | 🕘 | Audit trail / activity logs for accountability |
@@ -44,6 +46,7 @@ The **GSO Information System** is an internal web application built for the Gene
 - **Database:** MySQL
 - **Frontend:** React (via [Inertia.js](https://inertiajs.com))
 - **Authentication:** [Laravel Breeze](https://laravel.com/docs/starter-kits#breeze-and-inertia) (React edition)
+- **OCR:** [OCR.Space API](https://ocr.space)
 - **Containerization:** Docker & Docker Compose
 
 ## Installation
@@ -108,13 +111,16 @@ docker compose exec app php artisan <command>
 ## Modules
 
 ### 📝 Procurement
-Handles purchase requests, supplier records, approval routing, and purchase order generation — giving staff a clear view of request status from submission to fulfillment.
+Handles the encoding of items — with OCR-assisted scanning to auto-extract item details from physical documents — receiving and processing of Purchase Requests (PRs), and the numbering and generation of Purchase Orders (POs).
 
 ### 📦 Inventory
-Tracks stock levels across supplies and equipment, records stock in/out movements, and flags items that need reordering.
+Manages the receiving of Purchase Orders for incoming and outgoing stock, and the issuance of RIS (Requisition and Issue Slip) validation, SSMI, and IAR (Inspection and Acceptance Report).
 
 ### 🗂️ Records
-Maintains a centralized, searchable archive of GSO documents and transaction history for easy retrieval and reporting.
+Manages the storage tracking of physical document copies, designed specifically for documents that have been submitted for archiving.
+
+### 🛠️ System Admin
+Provides moderation and oversight of the entire system — managing user accounts and roles, configuring permissions, monitoring activity/audit logs, and maintaining overall system settings and data integrity across the Procurement, Inventory, and Records modules. Includes a dashboard with a request timeline view, tracking each request from the moment it's received in Inventory through to its release.
 
 ## Contributing
 
