@@ -29,41 +29,9 @@
             width: 100%;
         }
 
-        /* Top Bar Segment */
-        .header-table {
-            width: 100%;
-            border-collapse: collapse;
+        /* Top Bar Segment: the shared letterhead, closed off from the form below */
+        table.doc-letterhead.pr-letterhead {
             border-bottom: 2px solid #000000;
-        }
-
-        .header-logo {
-            width: 15%;
-            text-align: center;
-            padding: 5px;
-        }
-
-        .header-logo img {
-            width: 65px;
-            height: auto;
-        }
-
-        .header-text {
-            text-align: center;
-            width: 70%;
-            vertical-align: middle;
-        }
-
-        .header-text p {
-            margin: 0;
-            font-size: 11px;
-        }
-
-        .doc-title {
-            font-size: 16px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 8px;
         }
 
         /* Metadata Tracking Section */
@@ -199,31 +167,15 @@
             text-align: center;
         }
     </style>
+    @include('pdf.partials.branding-styles')
 </head>
 <body>
+@include('pdf.partials.foreground')
+@php $sig = $signatories['purchase_request']['slots']; @endphp
 
 <div class="pr-container">
 
-    <table class="header-table">
-        <tr>
-            <td class="header-logo">
-                @if(file_exists(public_path('images/doh-logo.png')))
-                    <img src="{{ public_path('images/doh-logo.png') }}" alt="LGU Logo">
-                @endif
-            </td>
-            <td class="header-text">
-                <p>Republic of the Philippines</p>
-                <p>Province of Davao del Norte</p>
-                <p><strong>CITY GOVERNMENT OF PANABO</strong></p>
-                <div class="doc-title">PURCHASE REQUEST</div>
-            </td>
-            <td class="header-logo">
-                @if(file_exists(public_path('images/center-logo.png')))
-                    <img src="{{ public_path('images/center-logo.png') }}" alt="Secondary Logo">
-                @endif
-            </td>
-        </tr>
-    </table>
+    @include('pdf.partials.letterhead', ['documentTitle' => 'Purchase Request', 'class' => 'pr-letterhead'])
 
     <table class="meta-section-table">
         <tr>
@@ -358,10 +310,10 @@
             <div style="text-align: center; margin-top: 10px;">
                 <div style="font-size: 9px; margin-bottom: 15px; text-align: left; padding-left: 5px;">Certified By:</div>
                 <div style="font-weight: bold; text-transform: uppercase; text-decoration: underline;">
-                    JOVEN M. SEPE, CPA, MBA
+                    @if(filled($sig['budget_officer']['name'])){{ $sig['budget_officer']['name'] }}@else&nbsp;@endif
                 </div>
                 <div style="font-size: 9px; margin-top: 2px; color: #000000;">
-                    City Budget Officer I
+                    {{ $sig['budget_officer']['position'] }}
                 </div>
             </div>
         </div>
@@ -384,20 +336,20 @@
             <tr>
                 <td>
                     <div class="sig-name" style="text-decoration: none;">&nbsp;</div>
-                    <div class="sig-name">{{ $purchaseRequest->requester_name ?? '' }}</div>
+                    <div class="sig-name">@if(filled($purchaseRequest->requester_department)){{ $purchaseRequest->requester_department }}@else&nbsp;@endif</div>
                     <div class="sig-title">{{ $purchaseRequest->requester_designation ?? 'Requestor' }}</div>
                     <div class="sig-date" style="margin-top: 5px;">Date: {{ $purchaseRequest->created_at ? $purchaseRequest->created_at->format('M d, Y') : '' }}</div>
                 </td>
                 <td>
                     <div class="sig-name" style="text-decoration: none;">&nbsp;</div>
-                    <div class="sig-name">{{ $purchaseRequest->cash_availability_name ?? '' }}</div>
-                    <div class="sig-title">{{ $purchaseRequest->cash_availability_designation ?? '' }}</div>
+                    <div class="sig-name">@if(filled($sig['cash_availability']['name'])){{ $sig['cash_availability']['name'] }}@else&nbsp;@endif</div>
+                    <div class="sig-title">{{ $sig['cash_availability']['position'] }}</div>
                     <div class="sig-date" style="margin-top: 5px;">Date: ________________________</div>
                 </td>
                 <td>
                     <div class="sig-name" style="text-decoration: none;">&nbsp;</div>
-                    <div class="sig-name">{{ $purchaseRequest->approved_by_name ?? '' }}</div>
-                    <div class="sig-title">{{ $purchaseRequest->approved_by_designation ?? '' }}</div>
+                    <div class="sig-name">@if(filled($sig['approved_by']['name'])){{ $sig['approved_by']['name'] }}@else&nbsp;@endif</div>
+                    <div class="sig-title">{{ $sig['approved_by']['position'] }}</div>
                     <div class="sig-date" style="margin-top: 5px;">Date: ________________________</div>
                 </td>
             </tr>

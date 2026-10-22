@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ERD · GSONEO</title>
+    <style>
+        :root {
+            --bg: #f8fafc; --panel: #ffffff; --ink: #0f172a; --muted: #64748b; --line: #e2e8f0;
+            --accent: #4f46e5; --accent-soft: #eef2ff; --hl: #f59e0b;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+        .app { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
+        aside { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+        header.side { padding: 16px; border-bottom: 1px solid var(--line); }
+        header.side h1 { font-size: 16px; margin: 0; }
+        header.side p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+        .search { margin-top: 12px; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+        .search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+        ul.tables { list-style: none; margin: 0; padding: 6px; overflow: auto; flex: 1; }
+        ul.tables button { width: 100%; display: flex; justify-content: space-between; gap: 8px; text-align: left; padding: 7px 10px; border: 0; border-radius: 6px; background: none; font: inherit; color: var(--ink); cursor: pointer; }
+        ul.tables button:hover { background: #f1f5f9; }
+        ul.tables button[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+        ul.tables small { color: var(--muted); font-weight: 400; }
+        .details { border-top: 1px solid var(--line); padding: 12px 16px; max-height: 45vh; overflow: auto; font-size: 12px; }
+        .details h2 { font-size: 13px; margin: 0 0 8px; font-family: ui-monospace, Consolas, monospace; }
+        .details table { width: 100%; border-collapse: collapse; }
+        .details td { padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+        .details td:first-child { font-family: ui-monospace, Consolas, monospace; }
+        .details .k { color: var(--accent); font-weight: 600; }
+        .details .rel { margin-top: 10px; color: var(--muted); }
+        .details .rel b { color: var(--ink); font-weight: 600; }
+        main { position: relative; overflow: hidden; min-width: 0; }
+        .toolbar { position: absolute; top: 12px; right: 12px; z-index: 5; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+        .toolbar button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font: inherit; font-size: 13px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+        .toolbar button:hover { background: #f1f5f9; }
+        .toolbar .zoom { min-width: 56px; text-align: center; padding: 6px 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+        #viewport { position: absolute; inset: 0; cursor: grab; touch-action: none; }
+        #viewport.dragging { cursor: grabbing; }
+        #canvas { transform-origin: 0 0; position: absolute; top: 0; left: 0; }
+        #status { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 24px; text-align: center; }
+        .hint { position: absolute; left: 12px; bottom: 12px; color: var(--muted); font-size: 12px; background: rgba(255,255,255,.85); padding: 4px 8px; border-radius: 6px; }
+        svg .erd-highlight rect, svg .erd-highlight path { stroke: var(--hl) !important; stroke-width: 3px !important; }
+        @media (max-width: 760px) {
+            .app { grid-template-columns: 1fr; grid-template-rows: 45vh 1fr; }
+            aside { border-right: 0; border-bottom: 1px solid var(--line); }
+        }
+    </style>
+</head>
+<body>
+<div class="app">
+    <aside>
+        <header class="side">
+            <h1>Entity Relationship Diagram</h1>
+            <p>GSONEO · 15 tables · 16 relationships<br>Generated Sep 16, 2026 2:19 PM PST</p>
+            <input id="search" class="search" type="search" placeholder="Find a table or column…" aria-label="Find a table or column">
+        </header>
+        <ul class="tables" id="tables"></ul>
+        <section class="details" id="details" hidden></section>
+    </aside>
+    <main>
+        <div class="toolbar">
+            <button type="button" id="zoomOut" aria-label="Zoom out">−</button>
+            <span class="zoom" id="zoomLabel">100%</span>
+            <button type="button" id="zoomIn" aria-label="Zoom in">+</button>
+            <button type="button" id="fit">Fit</button>
+            <button type="button" id="actual">100%</button>
+            <button type="button" id="svgDownload">Download SVG</button>
+            <button type="button" id="pngDownload">Download PNG</button>
+        </div>
+        <div id="viewport"><div id="canvas"></div></div>
+        <div id="status">Rendering diagram…</div>
+        <div class="hint">Drag to pan · scroll to zoom · click a table in the list to jump to it</div>
+    </main>
+</div>
+
+<script type="module">
+    // Mermaid comes from the app's own build (see resources/js/erd-mermaid.js), not a
+    // CDN, so the ERD opens with no internet. Imported below, where a failure to load
+    // it — assets not built yet — can be shown in the status line.
+    const mermaidUrl = "\/docs\/erd\/mermaid.js";
+
+    const diagram = "erDiagram\n    audit_log {\n        bigint id PK\n        bigint user_id \u0022nullable\u0022\n        varchar action\n        varchar auditable_type \u0022nullable\u0022\n        varchar auditable_id \u0022nullable\u0022\n        varchar description \u0022nullable\u0022\n        json old_values \u0022nullable\u0022\n        json new_values \u0022nullable\u0022\n        varchar ip_address \u0022nullable\u0022\n        varchar user_agent \u0022nullable\u0022\n        timestamp created_at\n    }\n    canvasForms {\n        bigint id PK\n        varchar CF_Number\n        varchar pr_number\n        varchar CF_to_be_Open\n        varchar CF_delivery_Period\n        varchar CF_canvasser \u0022nullable\u0022\n        varchar CF_made_by\n        varchar CF_bac_date\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    departments {\n        bigint id PK\n        varchar Department_Name UK\n        varchar Department_Code UK\n        varchar Department_Desc \u0022nullable\u0022\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    iar {\n        bigint id PK\n        varchar iar_number\n        varchar invoice_number \u0022nullable\u0022\n        varchar PO_Number FK\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    items {\n        bigint id PK\n        varchar item_desc UK\n        decimal item_price\n        varchar item_unit\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    permission_role {\n        bigint role_id PK, FK\n        bigint permission_id PK, FK\n    }\n    permissions {\n        bigint id PK\n        varchar name UK\n        varchar label\n        varchar group\n        varchar description \u0022nullable\u0022\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    purchase_order {\n        bigint id PK\n        varchar PO_Number UK \u0022nullable\u0022\n        varchar PO_Supplier \u0022nullable\u0022\n        datetime PO_Date \u0022nullable\u0022\n        varchar PR_Number FK, UK\n        int poNumbered_by FK \u0022nullable\u0022\n        varchar RIS_Number \u0022nullable\u0022\n        datetime RIS_Date \u0022nullable\u0022\n        int risNumbered_by FK \u0022nullable\u0022\n        varchar SSMI_Number \u0022nullable\u0022\n        datetime SSMI_Date \u0022nullable\u0022\n        datetime released_at \u0022nullable\u0022\n        int released_by_emp_id FK \u0022nullable\u0022\n        varchar released_to \u0022nullable\u0022\n        varchar released_to_department \u0022nullable\u0022\n        text release_remarks \u0022nullable\u0022\n        int ssmiNumbered_by \u0022nullable\u0022\n        int status FK\n        int cancelled_by_emp_id FK \u0022nullable\u0022\n        datetime cancelled_at \u0022nullable\u0022\n        text cancellation_reason \u0022nullable\u0022\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    purchase_request_items {\n        bigint id PK\n        bigint purchase_request_id FK\n        varchar item_name \u0022nullable\u0022\n        varchar item_desc \u0022nullable\u0022\n        varchar unit\n        int quantity\n        decimal estimated_unit_cost\n        decimal total_estimated_cost\n        decimal bidding_unit_cost \u0022nullable\u0022\n        decimal total_bidding_unit_cost \u0022nullable\u0022\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    purchase_requests {\n        bigint id PK\n        varchar pr_number UK\n        text requester_department\n        text mode_of_procurement \u0022nullable\u0022\n        text remarks_or_notes \u0022nullable\u0022\n        text reason_to_decline \u0022nullable\u0022\n        text cancellation_reason \u0022nullable\u0022\n        int verify_by_emp_id FK \u0022nullable\u0022\n        int encoded_by \u0022nullable\u0022\n        int decline_by_emp_id \u0022nullable\u0022\n        int cancelled_by_emp_id FK \u0022nullable\u0022\n        int status FK\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n        datetime verified_At \u0022nullable\u0022\n        datetime encoded_at \u0022nullable\u0022\n        datetime declined_At \u0022nullable\u0022\n        datetime cancelled_at \u0022nullable\u0022\n    }\n    record_classes {\n        bigint id PK\n        varchar code UK\n        varchar title\n        text description \u0022nullable\u0022\n        varchar rds_source\n        varchar rds_item_no\n        smallint retention_years \u0022nullable\u0022\n        varchar retention_trigger\n        tinyint is_permanent\n        tinyint is_vital\n        varchar sensitivity\n        tinyint is_active\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    records {\n        bigint id PK\n        bigint record_class_id FK\n        varchar title\n        varchar reference_no \u0022nullable\u0022\n        date record_date\n        varchar originating_office\n        varchar custodian\n        varchar physical_location\n        varchar box_no \u0022nullable\u0022\n        date retention_starts_on \u0022nullable\u0022\n        date eligible_for_disposal_on \u0022nullable\u0022\n        varchar status\n        timestamp archived_at \u0022nullable\u0022\n        varchar archived_by \u0022nullable\u0022\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    role {\n        bigint id PK\n        varchar role_name\n        varchar section\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    status {\n        bigint id PK\n        int status_code UK\n        varchar status_desc\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    users {\n        bigint id PK\n        int emp_id UK\n        varchar emp_fname\n        varchar emp_lname\n        bigint role_id FK\n        bigint status_id FK\n        varchar password\n        varchar remember_token \u0022nullable\u0022\n        timestamp created_at \u0022nullable\u0022\n        timestamp updated_at \u0022nullable\u0022\n    }\n    purchase_order ||--o{ iar : \u0022PO_Number\u0022\n    permissions ||--o{ permission_role : \u0022permission_id\u0022\n    role ||--o{ permission_role : \u0022role_id\u0022\n    users |o--o{ purchase_order : \u0022cancelled_by_emp_id\u0022\n    users |o--o{ purchase_order : \u0022poNumbered_by\u0022\n    purchase_requests ||--o| purchase_order : \u0022PR_Number\u0022\n    users |o--o{ purchase_order : \u0022released_by_emp_id\u0022\n    users |o--o{ purchase_order : \u0022risNumbered_by\u0022\n    status ||--o{ purchase_order : \u0022status\u0022\n    purchase_requests ||--o{ purchase_request_items : \u0022purchase_request_id\u0022\n    users |o--o{ purchase_requests : \u0022cancelled_by_emp_id\u0022\n    status ||--o{ purchase_requests : \u0022status\u0022\n    users |o--o{ purchase_requests : \u0022verify_by_emp_id\u0022\n    record_classes ||--o{ records : \u0022record_class_id\u0022\n    role ||--o{ users : \u0022role_id\u0022\n    status ||--o{ users : \u0022status_id\u0022\n";
+    const tables = {"audit_log":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"user_id","type":"bigint unsigned","nullable":true,"keys":[]},{"name":"action","type":"varchar(255)","nullable":false,"keys":[]},{"name":"auditable_type","type":"varchar(255)","nullable":true,"keys":[]},{"name":"auditable_id","type":"varchar(255)","nullable":true,"keys":[]},{"name":"description","type":"varchar(255)","nullable":true,"keys":[]},{"name":"old_values","type":"json","nullable":true,"keys":[]},{"name":"new_values","type":"json","nullable":true,"keys":[]},{"name":"ip_address","type":"varchar(255)","nullable":true,"keys":[]},{"name":"user_agent","type":"varchar(255)","nullable":true,"keys":[]},{"name":"created_at","type":"timestamp","nullable":false,"keys":[]}]},"canvasForms":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"CF_Number","type":"varchar(255)","nullable":false,"keys":[]},{"name":"pr_number","type":"varchar(255)","nullable":false,"keys":[]},{"name":"CF_to_be_Open","type":"varchar(255)","nullable":false,"keys":[]},{"name":"CF_delivery_Period","type":"varchar(255)","nullable":false,"keys":[]},{"name":"CF_canvasser","type":"varchar(255)","nullable":true,"keys":[]},{"name":"CF_made_by","type":"varchar(255)","nullable":false,"keys":[]},{"name":"CF_bac_date","type":"varchar(255)","nullable":false,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"departments":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"Department_Name","type":"varchar(255)","nullable":false,"keys":["UK"]},{"name":"Department_Code","type":"varchar(255)","nullable":false,"keys":["UK"]},{"name":"Department_Desc","type":"varchar(255)","nullable":true,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"iar":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"iar_number","type":"varchar(255)","nullable":false,"keys":[]},{"name":"invoice_number","type":"varchar(255)","nullable":true,"keys":[]},{"name":"PO_Number","type":"varchar(255)","nullable":false,"keys":["FK"]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"items":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"item_desc","type":"varchar(255)","nullable":false,"keys":["UK"]},{"name":"item_price","type":"decimal(12,2)","nullable":false,"keys":[]},{"name":"item_unit","type":"varchar(20)","nullable":false,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"permission_role":{"columns":[{"name":"role_id","type":"bigint unsigned","nullable":false,"keys":["PK","FK"]},{"name":"permission_id","type":"bigint unsigned","nullable":false,"keys":["PK","FK"]}]},"permissions":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"name","type":"varchar(100)","nullable":false,"keys":["UK"]},{"name":"label","type":"varchar(255)","nullable":false,"keys":[]},{"name":"group","type":"varchar(100)","nullable":false,"keys":[]},{"name":"description","type":"varchar(255)","nullable":true,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"purchase_order":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"PO_Number","type":"varchar(255)","nullable":true,"keys":["UK"]},{"name":"PO_Supplier","type":"varchar(255)","nullable":true,"keys":[]},{"name":"PO_Date","type":"datetime","nullable":true,"keys":[]},{"name":"PR_Number","type":"varchar(255)","nullable":false,"keys":["FK","UK"]},{"name":"poNumbered_by","type":"int","nullable":true,"keys":["FK"]},{"name":"RIS_Number","type":"varchar(255)","nullable":true,"keys":[]},{"name":"RIS_Date","type":"datetime","nullable":true,"keys":[]},{"name":"risNumbered_by","type":"int","nullable":true,"keys":["FK"]},{"name":"SSMI_Number","type":"varchar(255)","nullable":true,"keys":[]},{"name":"SSMI_Date","type":"datetime","nullable":true,"keys":[]},{"name":"released_at","type":"datetime","nullable":true,"keys":[]},{"name":"released_by_emp_id","type":"int","nullable":true,"keys":["FK"]},{"name":"released_to","type":"varchar(255)","nullable":true,"keys":[]},{"name":"released_to_department","type":"varchar(255)","nullable":true,"keys":[]},{"name":"release_remarks","type":"text","nullable":true,"keys":[]},{"name":"ssmiNumbered_by","type":"int","nullable":true,"keys":[]},{"name":"status","type":"int unsigned","nullable":false,"keys":["FK"]},{"name":"cancelled_by_emp_id","type":"int","nullable":true,"keys":["FK"]},{"name":"cancelled_at","type":"datetime","nullable":true,"keys":[]},{"name":"cancellation_reason","type":"text","nullable":true,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"purchase_request_items":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"purchase_request_id","type":"bigint unsigned","nullable":false,"keys":["FK"]},{"name":"item_name","type":"varchar(255)","nullable":true,"keys":[]},{"name":"item_desc","type":"varchar(255)","nullable":true,"keys":[]},{"name":"unit","type":"varchar(255)","nullable":false,"keys":[]},{"name":"quantity","type":"int","nullable":false,"keys":[]},{"name":"estimated_unit_cost","type":"decimal(10,2)","nullable":false,"keys":[]},{"name":"total_estimated_cost","type":"decimal(10,2)","nullable":false,"keys":[]},{"name":"bidding_unit_cost","type":"decimal(10,2)","nullable":true,"keys":[]},{"name":"total_bidding_unit_cost","type":"decimal(10,2)","nullable":true,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"purchase_requests":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"pr_number","type":"varchar(255)","nullable":false,"keys":["UK"]},{"name":"requester_department","type":"text","nullable":false,"keys":[]},{"name":"mode_of_procurement","type":"text","nullable":true,"keys":[]},{"name":"remarks_or_notes","type":"text","nullable":true,"keys":[]},{"name":"reason_to_decline","type":"text","nullable":true,"keys":[]},{"name":"cancellation_reason","type":"text","nullable":true,"keys":[]},{"name":"verify_by_emp_id","type":"int","nullable":true,"keys":["FK"]},{"name":"encoded_by","type":"int","nullable":true,"keys":[]},{"name":"decline_by_emp_id","type":"int","nullable":true,"keys":[]},{"name":"cancelled_by_emp_id","type":"int","nullable":true,"keys":["FK"]},{"name":"status","type":"int unsigned","nullable":false,"keys":["FK"]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]},{"name":"verified_At","type":"datetime","nullable":true,"keys":[]},{"name":"encoded_at","type":"datetime","nullable":true,"keys":[]},{"name":"declined_At","type":"datetime","nullable":true,"keys":[]},{"name":"cancelled_at","type":"datetime","nullable":true,"keys":[]}]},"record_classes":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"code","type":"varchar(30)","nullable":false,"keys":["UK"]},{"name":"title","type":"varchar(255)","nullable":false,"keys":[]},{"name":"description","type":"text","nullable":true,"keys":[]},{"name":"rds_source","type":"varchar(50)","nullable":false,"keys":[]},{"name":"rds_item_no","type":"varchar(30)","nullable":false,"keys":[]},{"name":"retention_years","type":"smallint unsigned","nullable":true,"keys":[]},{"name":"retention_trigger","type":"varchar(40)","nullable":false,"keys":[]},{"name":"is_permanent","type":"tinyint(1)","nullable":false,"keys":[]},{"name":"is_vital","type":"tinyint(1)","nullable":false,"keys":[]},{"name":"sensitivity","type":"varchar(20)","nullable":false,"keys":[]},{"name":"is_active","type":"tinyint(1)","nullable":false,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"records":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"record_class_id","type":"bigint unsigned","nullable":false,"keys":["FK"]},{"name":"title","type":"varchar(255)","nullable":false,"keys":[]},{"name":"reference_no","type":"varchar(100)","nullable":true,"keys":[]},{"name":"record_date","type":"date","nullable":false,"keys":[]},{"name":"originating_office","type":"varchar(255)","nullable":false,"keys":[]},{"name":"custodian","type":"varchar(255)","nullable":false,"keys":[]},{"name":"physical_location","type":"varchar(255)","nullable":false,"keys":[]},{"name":"box_no","type":"varchar(50)","nullable":true,"keys":[]},{"name":"retention_starts_on","type":"date","nullable":true,"keys":[]},{"name":"eligible_for_disposal_on","type":"date","nullable":true,"keys":[]},{"name":"status","type":"varchar(30)","nullable":false,"keys":[]},{"name":"archived_at","type":"timestamp","nullable":true,"keys":[]},{"name":"archived_by","type":"varchar(20)","nullable":true,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"role":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"role_name","type":"varchar(255)","nullable":false,"keys":[]},{"name":"section","type":"varchar(255)","nullable":false,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"status":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"status_code","type":"int unsigned","nullable":false,"keys":["UK"]},{"name":"status_desc","type":"varchar(255)","nullable":false,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]},"users":{"columns":[{"name":"id","type":"bigint unsigned","nullable":false,"keys":["PK"]},{"name":"emp_id","type":"int","nullable":false,"keys":["UK"]},{"name":"emp_fname","type":"varchar(255)","nullable":false,"keys":[]},{"name":"emp_lname","type":"varchar(255)","nullable":false,"keys":[]},{"name":"role_id","type":"bigint unsigned","nullable":false,"keys":["FK"]},{"name":"status_id","type":"bigint unsigned","nullable":false,"keys":["FK"]},{"name":"password","type":"varchar(255)","nullable":false,"keys":[]},{"name":"remember_token","type":"varchar(100)","nullable":true,"keys":[]},{"name":"created_at","type":"timestamp","nullable":true,"keys":[]},{"name":"updated_at","type":"timestamp","nullable":true,"keys":[]}]}};
+    const relationships = [{"parent":"purchase_order","child":"iar","columns":["PO_Number"],"parentColumns":["PO_Number"],"nullable":false,"unique":false},{"parent":"permissions","child":"permission_role","columns":["permission_id"],"parentColumns":["id"],"nullable":false,"unique":false},{"parent":"role","child":"permission_role","columns":["role_id"],"parentColumns":["id"],"nullable":false,"unique":false},{"parent":"users","child":"purchase_order","columns":["cancelled_by_emp_id"],"parentColumns":["emp_id"],"nullable":true,"unique":false},{"parent":"users","child":"purchase_order","columns":["poNumbered_by"],"parentColumns":["emp_id"],"nullable":true,"unique":false},{"parent":"purchase_requests","child":"purchase_order","columns":["PR_Number"],"parentColumns":["pr_number"],"nullable":false,"unique":true},{"parent":"users","child":"purchase_order","columns":["released_by_emp_id"],"parentColumns":["emp_id"],"nullable":true,"unique":false},{"parent":"users","child":"purchase_order","columns":["risNumbered_by"],"parentColumns":["emp_id"],"nullable":true,"unique":false},{"parent":"status","child":"purchase_order","columns":["status"],"parentColumns":["status_code"],"nullable":false,"unique":false},{"parent":"purchase_requests","child":"purchase_request_items","columns":["purchase_request_id"],"parentColumns":["id"],"nullable":false,"unique":false},{"parent":"users","child":"purchase_requests","columns":["cancelled_by_emp_id"],"parentColumns":["emp_id"],"nullable":true,"unique":false},{"parent":"status","child":"purchase_requests","columns":["status"],"parentColumns":["status_code"],"nullable":false,"unique":false},{"parent":"users","child":"purchase_requests","columns":["verify_by_emp_id"],"parentColumns":["emp_id"],"nullable":true,"unique":false},{"parent":"record_classes","child":"records","columns":["record_class_id"],"parentColumns":["id"],"nullable":false,"unique":false},{"parent":"role","child":"users","columns":["role_id"],"parentColumns":["id"],"nullable":false,"unique":false},{"parent":"status","child":"users","columns":["status_id"],"parentColumns":["id"],"nullable":false,"unique":false}];
+
+    const $ = (id) => document.getElementById(id);
+    const viewport = $('viewport'), canvas = $('canvas'), status = $('status');
+    let scale = 1, x = 0, y = 0, svgEl = null, current = null;
+
+    const apply = () => {
+        canvas.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+        $('zoomLabel').textContent = Math.round(scale * 100) + '%';
+    };
+
+    const zoomAt = (factor, cx, cy) => {
+        const next = Math.min(4, Math.max(0.05, scale * factor));
+        x = cx - (cx - x) * (next / scale);
+        y = cy - (cy - y) * (next / scale);
+        scale = next;
+        apply();
+    };
+
+    const size = () => {
+        const box = svgEl.viewBox.baseVal;
+        return { w: box?.width || svgEl.getBBox().width, h: box?.height || svgEl.getBBox().height };
+    };
+
+    const fit = () => {
+        const { w, h } = size();
+        const r = viewport.getBoundingClientRect();
+        // Layout may not be ready on the first frame; try again on the next one.
+        if (r.width < 50 || r.height < 50) return requestAnimationFrame(fit);
+        scale = Math.max(0.05, Math.min((r.width - 40) / w, (r.height - 40) / h, 1));
+        x = (r.width - w * scale) / 2;
+        y = (r.height - h * scale) / 2;
+        apply();
+    };
+
+    // Mermaid ids entity groups "<renderId>-entity-<table>-<n>" (older versions drop the prefix).
+    const entityGroup = (name) =>
+        [...svgEl.querySelectorAll('g[id*="entity-"]')].find((g) => g.id.match(/entity-(.+)-\d+$/)?.[1] === name);
+
+    const focusTable = (name) => {
+        const group = entityGroup(name);
+        svgEl.querySelectorAll('.erd-highlight').forEach((g) => g.classList.remove('erd-highlight'));
+        if (!group) return;
+        group.classList.add('erd-highlight');
+
+        // Screen rectangles already include every transform, so convert them
+        // back to unscaled canvas units before re-centring.
+        const g = group.getBoundingClientRect();
+        const s = svgEl.getBoundingClientRect();
+        const cx = (g.left - s.left + g.width / 2) / scale;
+        const cy = (g.top - s.top + g.height / 2) / scale;
+        const r = viewport.getBoundingClientRect();
+        scale = Math.min(1.2, Math.max(0.6, scale));
+        x = r.width / 2 - cx * scale;
+        y = r.height / 2 - cy * scale;
+        apply();
+    };
+
+    const text = (value) => document.createTextNode(value ?? '');
+    const el = (tag, children = [], attrs = {}) => {
+        const node = Object.assign(document.createElement(tag), attrs);
+        children.forEach((c) => node.append(typeof c === 'string' ? text(c) : c));
+        return node;
+    };
+
+    const showDetails = (name) => {
+        const t = tables[name];
+        const box = $('details');
+        box.replaceChildren();
+        box.hidden = false;
+        box.append(el('h2', [name]));
+        const rows = t.columns.map((c) => el('tr', [
+            el('td', [c.name]),
+            el('td', [c.type + (c.nullable ? ' · null' : '')]),
+            el('td', [c.keys.join(' ')], { className: 'k' }),
+        ]));
+        box.append(el('table', rows));
+        const rels = relationships.filter((r) => r.parent === name || r.child === name);
+        if (rels.length) {
+            box.append(el('div', rels.map((r) => el('div', [
+                el('b', [r.child]), `.${r.columns.join(', ')} → `, el('b', [r.parent]), `.${r.parentColumns.join(', ')}`,
+            ])), { className: 'rel' }));
+        }
+    };
+
+    const select = (name) => {
+        current = name;
+        document.querySelectorAll('#tables button').forEach((b) => b.setAttribute('aria-current', String(b.dataset.table === name)));
+        showDetails(name);
+        focusTable(name);
+    };
+
+    const renderList = (query = '') => {
+        const q = query.trim().toLowerCase();
+        const items = Object.keys(tables)
+            .filter((name) => !q || name.toLowerCase().includes(q) || tables[name].columns.some((c) => c.name.toLowerCase().includes(q)))
+            .map((name) => {
+                const button = el('button', [name, el('small', [String(tables[name].columns.length)])], { type: 'button' });
+                button.dataset.table = name;
+                button.setAttribute('aria-current', String(name === current));
+                button.addEventListener('click', () => select(name));
+                return el('li', [button]);
+            });
+        $('tables').replaceChildren(...items);
+    };
+
+    const download = (blob, filename) => {
+        const a = el('a', [], { href: URL.createObjectURL(blob), download: filename });
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+
+    const svgString = () => new XMLSerializer().serializeToString(svgEl);
+
+    try {
+        await import(mermaidUrl);
+        const mermaid = window.mermaid;
+        if (!mermaid) throw new Error('Mermaid did not load from ' + mermaidUrl);
+        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', htmlLabels: false, er: { useMaxWidth: false }, maxTextSize: 500000 });
+        const { svg } = await mermaid.render('erd', diagram);
+        canvas.innerHTML = svg;
+        svgEl = canvas.querySelector('svg');
+        const { w, h } = size();
+        svgEl.setAttribute('width', w);
+        svgEl.setAttribute('height', h);
+        svgEl.style.maxWidth = 'none';
+        status.remove();
+        renderList();
+        fit();
+    } catch (error) {
+        status.textContent = 'Could not render the diagram: ' + error.message
+            + '. If Mermaid itself failed to load, the frontend assets need building (npm run build).'
+            + ' Either way, docs/erd/erd.mmd holds the diagram and opens in any Mermaid tool.';
+    }
+
+    $('search').addEventListener('input', (e) => renderList(e.target.value));
+    $('zoomIn').addEventListener('click', () => { const r = viewport.getBoundingClientRect(); zoomAt(1.25, r.width / 2, r.height / 2); });
+    $('zoomOut').addEventListener('click', () => { const r = viewport.getBoundingClientRect(); zoomAt(0.8, r.width / 2, r.height / 2); });
+    $('fit').addEventListener('click', () => svgEl && fit());
+    $('actual').addEventListener('click', () => { const r = viewport.getBoundingClientRect(); zoomAt(1 / scale, r.width / 2, r.height / 2); });
+
+    viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const r = viewport.getBoundingClientRect();
+        zoomAt(e.deltaY < 0 ? 1.1 : 0.9, e.clientX - r.left, e.clientY - r.top);
+    }, { passive: false });
+
+    let drag = null;
+    viewport.addEventListener('pointerdown', (e) => { drag = { sx: e.clientX - x, sy: e.clientY - y }; viewport.setPointerCapture(e.pointerId); viewport.classList.add('dragging'); });
+    viewport.addEventListener('pointermove', (e) => { if (!drag) return; x = e.clientX - drag.sx; y = e.clientY - drag.sy; apply(); });
+    const endDrag = () => { drag = null; viewport.classList.remove('dragging'); };
+    viewport.addEventListener('pointerup', endDrag);
+    viewport.addEventListener('pointercancel', endDrag);
+
+    $('svgDownload').addEventListener('click', () => svgEl && download(new Blob([svgString()], { type: 'image/svg+xml' }), 'erd.svg'));
+    $('pngDownload').addEventListener('click', () => {
+        if (!svgEl) return;
+        const { w, h } = size();
+        const img = new Image();
+        img.onload = () => {
+            const c = el('canvas', [], { width: w * 2, height: h * 2 });
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.scale(2, 2); ctx.drawImage(img, 0, 0, w, h);
+            c.toBlob((blob) => download(blob, 'erd.png'));
+        };
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString());
+    });
+</script>
+</body>
+</html>

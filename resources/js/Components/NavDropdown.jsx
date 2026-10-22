@@ -23,9 +23,9 @@ export default function NavDropdown({ label, defaultOpen = false, children }) {
                 onClick={() => setOpen((o) => !o)}
                 aria-expanded={open}
                 aria-controls={panelId}
-                className="flex w-full items-center justify-between rounded px-3 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
+                className="flex w-full items-center justify-between rounded px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
             >
-                <span>{label}</span>
+                <span >{label}</span>
 
                 <svg
                     className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${

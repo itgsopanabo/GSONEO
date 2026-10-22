@@ -22,7 +22,9 @@ class StoreRecordRequest extends FormRequest
             'title'               => ['required', 'string', 'max:255'],
             'reference_no'        => ['nullable', 'string', 'max:100'],
             'record_date'         => ['required', 'date', 'before_or_equal:today'],
-            'originating_office'  => ['required', 'string', 'max:255'],
+            // An office from the Requesting Offices screen; on an edit, the
+            // record's own office is accepted even if it has since been retired.
+            'originating_office'  => ['required', ...\App\Models\Departments::nameRule($this->route('record')?->originating_office)],
             'custodian'           => ['required', 'string', 'max:255'],
             'physical_location'   => ['required', 'string', 'max:255'],
             'box_no'              => ['nullable', 'string', 'max:50'],

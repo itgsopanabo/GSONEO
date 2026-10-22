@@ -7,6 +7,8 @@ use App\Models\AuditLog;
 use App\Models\Departments;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
+use App\Services\ProcurementCancellation;
+use App\Services\ProcurementStatusChange;
 use App\Services\PrTableParser;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Request;
@@ -23,49 +25,83 @@ class PurchaseRequestController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    /**
+     * The tabs of the Purchase Requests page and the statuses each one holds.
+     * A tab only shows to someone who works on at least one of its statuses.
+     */
+    private const TABS = [
+        'pending' => ['label' => 'Waiting for verification', 'statuses' => [1]],
+        'drafts' => ['label' => 'Drafts', 'statuses' => [0]],
+        'verified' => ['label' => 'Verified', 'statuses' => [100, 110, 120, 130, 200, 205]],
+        'declined' => ['label' => 'Declined', 'statuses' => [700]],
+    ];
+
+    /**
+     * Display a listing of the resource.
+     */
+    public function index(Request $request)
     {
         $user = Auth::user();
 
-        $query = PurchaseRequest::with(['items'])
-            ->whereNotIn('status', [400, 210])
-            ->orderBy('status', 'desc')
-            ->latest();
+        // Each permission adds the stages that person works on; someone holding
+        // several (a Section Head) sees all of them together. Anyone with only
+        // pr.view sees every early stage.
+        $allowed = array_values(array_unique(array_merge(
+            $user?->hasPermission('pr.verify') ? [0, 1, 700] : [],
+            $user?->hasPermission('pr.canvass') ? [100, 110, 120, 130, 200, 205] : [],
+            $user?->hasPermission('pr.po') ? [200, 205] : [],
+        ))) ?: array_merge(...array_column(self::TABS, 'statuses'));
 
-        // PR Verifier
-        if ($user && in_array($user->role_id, [3, 4])) {
-            $query->whereIn('status', [0,1]);
-        }
+        $tabs = collect(self::TABS)
+            ->map(fn ($tab) => $tab + ['statuses' => array_values(array_intersect($tab['statuses'], $allowed))])
+            ->filter(fn ($tab) => $tab['statuses'] !== []);
 
-        // Canvas Officer
-        if ($user && in_array($user->role_id, [3, 6])) {
-            $query->whereIn('status', [200, 100]);
-        }
-
-        // PO Officer
-        if ($user && in_array($user->role_id, [3, 5])) {
-            $query->whereIn('status', [210, 200]);
-        }
-
-        $purchaseRequests = $query->paginate(10);
-
-        // Audit Logging IncomingIndex View (Fixed morph tracking payload)
-        AuditLog::create([
-            'user_id' => Auth::id(),
-            'action' => 'viewed_index',
-            'auditable_type' => null, // Omit type when target is null to appease SQLite FK constraints
-            'auditable_id' => null,
-            'description' => "Navigated to Purchase Request IncomingIndex page",
-            'old_values' => null,
-            'new_values' => null,
-            'ip_address' => request()->ip(),
-            'user_agent' => request()->userAgent(),
+        $filters = $request->validate([
+            'view' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::TABS))],
+            'search' => ['nullable', 'string', 'max:100'],
+            'order' => ['nullable', 'integer'],
         ]);
-//
-//        dd($purchaseRequests->all());
+        $view = $tabs->has($filters['view'] ?? '') ? $filters['view'] : $tabs->keys()->first();
+        $search = trim($filters['search'] ?? '');
+        $with = ['items', 'verifiedBy:emp_id,emp_fname,emp_lname', 'encoder:emp_id,emp_fname,emp_lname', 'declinedBy:emp_id,emp_fname,emp_lname'];
+
+        $purchaseRequests = PurchaseRequest::with($with)
+            ->whereIn('status', $tabs[$view]['statuses'] ?? [])
+            ->when($search !== '', fn ($q) => $q->where(fn ($q) => $q
+                ->where('pr_number', 'like', "%{$search}%")
+                ->orWhere('requester_department', 'like', "%{$search}%")
+                ->orWhere('remarks_or_notes', 'like', "%{$search}%")))
+            // Waiting longest first where something is waiting; newest first otherwise.
+            ->when(in_array($view, ['pending', 'drafts'], true), fn ($q) => $q->oldest(), fn ($q) => $q->latest())
+            ->paginate(15)
+            ->withQueryString();
+
+        // A page view is logged once, not on every partial reload of the list.
+        if (! $request->header('X-Inertia-Partial-Data')) {
+            AuditLog::create([
+                'user_id' => Auth::id(),
+                'action' => 'viewed_index',
+                'auditable_type' => null, // Omit type when target is null to appease SQLite FK constraints
+                'auditable_id' => null,
+                'description' => "Navigated to Purchase Request IncomingIndex page",
+                'old_values' => null,
+                'new_values' => null,
+                'ip_address' => request()->ip(),
+                'user_agent' => request()->userAgent(),
+            ]);
+        }
+
         return Inertia::render('Procurement/PurchaseRequest/Index', [
             'purchaseRequests' => $purchaseRequests,
-            'departments' => Departments::pluck('Department_Name'),
+            'focusOrder' => isset($filters['order']) ? PurchaseRequest::with($with)->find($filters['order']) : null,
+            'filters' => ['view' => $view, 'search' => $search, 'order' => $filters['order'] ?? null],
+            'tabs' => $tabs->map(fn ($tab, $key) => [
+                'key' => $key,
+                'label' => $tab['label'],
+                'count' => PurchaseRequest::whereIn('status', $tab['statuses'])->count(),
+            ])->values(),
+            // Active offices from the Requesting Offices screen.
+            'departments' => collect(Departments::options())->pluck('name'),
         ]);
     }
 
@@ -83,7 +119,9 @@ class PurchaseRequestController extends Controller
             ]);
         });
 
-        return back()
+        // A new request is a draft, so land on the Drafts tab with it open.
+        return redirect()
+            ->route('purchase-requests.index', ['view' => 'drafts', 'order' => $purchaseRequest->id])
             ->with('success', "Purchase request {$purchaseRequest->pr_number} created.")
             ->with('created_pr', [
                 'id'        => $purchaseRequest->id,
@@ -143,6 +181,12 @@ class PurchaseRequestController extends Controller
     {
         $pr = $purchaseRequest;
 
+        // Without this, a request at any stage — a completed one included —
+        // could be sent back to Verified.
+        if ((int) $pr->status !== 1) {
+            return back()->with('error', "{$pr->pr_number} is not waiting for verification.");
+        }
+
         // Capture baseline data before alteration
         $oldValues = [
             'status' => $pr->status,
@@ -168,8 +212,8 @@ class PurchaseRequestController extends Controller
             'user_agent' => request()->userAgent(),
         ]);
 
-        return redirect()->route('purchase-requests.index')
-            ->with('success', 'Purchase Request verified successfully.');
+        return redirect()->route('purchase-requests.index', ['view' => 'verified', 'order' => $pr->id])
+            ->with('success', "{$pr->pr_number} verified. It moves on to canvassing.");
     }
 
     /**
@@ -182,6 +226,11 @@ class PurchaseRequestController extends Controller
         ]);
 
         $pr = PurchaseRequest::findOrFail($id);
+
+        // Only a request waiting for verification can be declined.
+        if ((int) $pr->status !== 1) {
+            return back()->with('error', "{$pr->pr_number} is not waiting for verification.");
+        }
 
         // Capture baseline data before alteration
         $oldValues = [
@@ -206,7 +255,7 @@ class PurchaseRequestController extends Controller
             'description' => "Declined Purchase Request #{$pr->pr_number}: {$validated['reason_to_decline']}",
             'old_values' => $oldValues,
             'new_values' => [
-                'status' => 400,
+                'status' => 700,   // was recorded as 400, which is not what declining sets
                 'decline_by_emp_id' => auth()->id(),
                 'declined_At' => $pr->declined_At,
                 'reason_to_decline' => $pr->reason_to_decline,
@@ -215,7 +264,64 @@ class PurchaseRequestController extends Controller
             'user_agent' => request()->userAgent(),
         ]);
 
-        return redirect()->route('purchase-requests.index')->with('success', 'Purchase Request has been declined.');
+        return redirect()->route('purchase-requests.index', ['view' => 'declined', 'order' => $pr->id])
+            ->with('success', "{$pr->pr_number} declined.");
+    }
+
+    /**
+     * Cancel a request and its purchase order (administrators only).
+     *
+     * What may be cancelled is decided by ProcurementCancellation, so the route
+     * refuses exactly what the screen refuses. Guarded by permission:procurement.override.
+     */
+    public function cancel(Request $request, PurchaseRequest $purchaseRequest, ProcurementCancellation $cancellation)
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+
+        if ($refusal = $cancellation->requestRefusal($purchaseRequest)) {
+            return back()->with('error', $refusal);
+        }
+
+        $cancellation->cancelRequest($purchaseRequest, $validated['reason']);
+
+        return back()->with('success', "Purchase request {$purchaseRequest->pr_number} has been cancelled.");
+    }
+
+    /**
+     * Move a request to another status (administrators only).
+     *
+     * Guarded by permission:procurement.override; what may be moved where is
+     * decided by ProcurementStatusChange, the same rules the screen offers.
+     */
+    public function changeStatus(Request $request, PurchaseRequest $purchaseRequest, ProcurementStatusChange $statuses)
+    {
+        $validated = $request->validate([
+            'status' => ['required', 'integer'],
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+
+        $code = (int) $validated['status'];
+
+        if ($code === (int) $purchaseRequest->status) {
+            return back()->with('error', 'That is already this request\'s status.');
+        }
+
+        $po = $purchaseRequest->purchaseOrder()->first();
+
+        if ($blocker = $statuses->requestBlocker($code, $po)) {
+            return back()->with('error', $blocker);
+        }
+
+        $statuses->moveRequest($purchaseRequest, $code, $validated['reason']);
+
+        return back()->with('success', "Purchase request {$purchaseRequest->pr_number} moved to {$this->statusLabel($code)}.");
+    }
+
+    private function statusLabel(int $code): string
+    {
+        return DB::table('status')->where('status_code', $code)->value('status_desc') ?? "status {$code}";
     }
 
     /**
@@ -226,18 +332,26 @@ class PurchaseRequestController extends Controller
         $pr = PurchaseRequest::findOrFail($id);
 
         // Capture baseline data before alteration
-        $oldValues = ['status' => $pr->status, 'decline_by_emp_id' => $pr->decline_by_emp_id, 'declined_At' => $pr->declined_At];
+        $oldValues = ['status' => $pr->status];
 
-        $pr->update([
-            'status' => 210,
-            'decline_by_emp_id' => auth()->id(),
-            'declined_At' => now(),
-        ]);
+        // Only the status moves. This used to stamp decline_by_emp_id and declined_At
+        // as well, which put a "Declined" stage on the timeline of every request that
+        // had merely proceeded to the purchase order stage.
+        $pr->update(['status' => 210]);
 
-        PurchaseOrder::create([
-            'PR_Number' => $pr->pr_number,
-            'status' => 210,
-        ]);
+        // One order row per request (PR_Number is unique), so a request whose order
+        // was cancelled and went back to canvassing reuses that row instead of
+        // failing on the duplicate key. Cancelling an order leaves it unnumbered
+        // (see ProcurementCancellation::orderRefusal), so nothing is overwritten.
+        PurchaseOrder::updateOrCreate(
+            ['PR_Number' => $pr->pr_number],
+            [
+                'status' => 210,
+                'cancelled_by_emp_id' => null,
+                'cancelled_at' => null,
+                'cancellation_reason' => null,
+            ],
+        );
 
         AuditLog::create([
             'user_id' => Auth::id(),
@@ -261,7 +375,6 @@ class PurchaseRequestController extends Controller
     {
         $validated = $request->validate([
             'supplier' => ['required', 'string', 'max:255'],
-            'date_received' => ['required', 'date'],
             'po_number_mode' => ['required', 'in:auto,manual'],
             'po_number' => ['required_if:po_number_mode,manual', 'nullable', 'integer', 'min:1', 'max:99999'],
         ]);
@@ -285,7 +398,6 @@ class PurchaseRequestController extends Controller
         $purchaseOrder->update([
             'PO_Number' => $poNumber,
             'PO_Supplier' => $validated['supplier'],
-            'supplier_receive_date' => $validated['date_received'],
             'PO_Date' => now()->format('Y-m-d'), //current date,
             'poNumbered_by' => auth()->id(),
             'status' => 230,    // whatever follows 220 in your flow

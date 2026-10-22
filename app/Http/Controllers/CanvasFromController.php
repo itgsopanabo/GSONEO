@@ -168,7 +168,12 @@ class CanvasFromController extends Controller
     private function validateCanvasDetails(Request $request): array
     {
         return $request->validate([
-            'opened_on' => ['required', 'date'],
+            // Either a date or "ASAP" when the canvass opens as soon as possible.
+            'opened_on' => ['bail', 'required', 'string', function (string $attribute, mixed $value, \Closure $fail) {
+                if ($value !== 'ASAP' && strtotime($value) === false) {
+                    $fail('The opening date must be a valid date or ASAP.');
+                }
+            }],
             'delivery_period' => ['nullable', 'string', 'max:255'],
             'bac_date' => ['nullable', 'date'],
         ]);
@@ -212,8 +217,9 @@ class CanvasFromController extends Controller
         $pr->update([
             'status' => 200,
             'mode_of_procurement' => 'SVP',
-            'verify_by_emp_id' => auth()->id(),
-            'verified_At' => now(),
+            // Verification is not re-stamped here: verify() already recorded who
+            // verified it and when, and overwriting that made "created to verified"
+            // measure the wait for canvassing instead.
         ]);
 
 

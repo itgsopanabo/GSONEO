@@ -1,6 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react'
 import { useState } from 'react'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.jsx'
+import { formatDateTime } from '@/Utils/formatDate.js'
 
 function formatValue(value, type) {
     if (value === null || value === undefined || value === '') return '—'
@@ -9,15 +10,7 @@ function formatValue(value, type) {
         return isNaN(n) ? value : n.toLocaleString(undefined, { maximumFractionDigits: 2 })
     }
     if (type === 'date') {
-        const d = new Date(String(value).replace(' ', 'T'))
-        if (isNaN(d)) return String(value)
-        const midnight = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0
-        return d.toLocaleString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            ...(midnight ? {} : { hour: 'numeric', minute: '2-digit' }),
-        })
+        return formatDateTime(value, { dateOnlyAtMidnight: true }, String(value))
     }
     return String(value)
 }

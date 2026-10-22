@@ -18,7 +18,6 @@ class PurchaseRequestSeeder extends Seeder
             ->has(PurchaseRequestItem::factory()->count(50), 'items')
             ->create([
                 'pr_number' => 'PR-2026-LONG-001',
-                'requester_name' => 'John Doe'
             ]);
 
         // 2. Create a PR with a short list
@@ -26,7 +25,6 @@ class PurchaseRequestSeeder extends Seeder
             ->has(PurchaseRequestItem::factory()->count(2), 'items')
             ->create([
                 'pr_number' => 'PR-2026-SHORT-001',
-                'requester_name' => 'Jane Smith'
             ]);
 
         // 3. Create a bulk batch

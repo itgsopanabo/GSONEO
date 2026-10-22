@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import UnitCell from '../Components/PasteGridComponents/UnitCell.jsx';
 import AutoGrowTextarea from '../Components/PasteGridComponents/AutoGrowTextarea.jsx';
 import { normalizeUnit } from '../Constants/Units.jsx';
@@ -75,18 +75,20 @@ function toNumericString(raw) {
 /* Grid shape                                                          */
 /* ------------------------------------------------------------------ */
 
+// Description carries the whole item: name, brand, model, specs. It is the one
+// field the request form itself keeps, so there is no separate name to fill in.
 const COLUMNS = [
     { key: 'quantity', label: 'Qty', kind: 'number', className: 'w-20' },
     { key: 'unit', label: 'Unit', kind: 'unit', className: 'w-28' },
-    { key: 'item_name', label: 'Item Name', kind: 'text', className: 'min-w-[14rem]' },
-    { key: 'description', label: 'Item Description', kind: 'multiline', className: 'min-w-[16rem]' },
+    { key: 'description', label: 'Description and specs', kind: 'multiline', className: 'min-w-[24rem]' },
     { key: 'estimated_unit_price', label: 'Unit cost', kind: 'number', className: 'w-28' },
 ];
+
+const LAST_COL = COLUMNS.length - 1;
 
 const emptyRow = () => ({
     quantity: '',
     unit: '',
-    item_name: '',
     description: '',
     estimated_unit_price: '',
 });
@@ -99,8 +101,8 @@ const emptyRow = () => ({
 const seedRow = (r = {}) => ({
     quantity: Number(r.quantity) > 0 ? String(r.quantity) : '',
     unit: r.unit ?? '',
-    item_name: r.item_name ?? '',
-    description: r.description ?? '',
+    // Older scans split a heading off the body; join them back into one field.
+    description: [r.item_name, r.description].filter(Boolean).join('\n').trim(),
     estimated_unit_price: Number(r.estimated_unit_price) > 0 ? String(r.estimated_unit_price) : '',
 });
 
@@ -117,19 +119,51 @@ export default function PasteGrid({ initialRows = [], onAdd, onCancel, minRows =
         return seeded;
     });
 
+    // The highlighted block. r1/c1 is the cell the selection started from and
+    // keeps keyboard focus; r2/c2 is the far corner. A paste is written inside
+    // this block and nowhere else.
+    const [sel, setSel] = useState({ r1: 0, c1: 0, r2: 0, c2: 0 });
+    const [pasteNote, setPasteNote] = useState(null);
+
+    const dragging = useRef(false);
+    // Set just before we move focus ourselves, so the focus handler doesn't
+    // collapse a selection we deliberately built.
+    const keepSelection = useRef(false);
+
+    const block = useMemo(() => ({
+        top: Math.min(sel.r1, sel.r2),
+        bottom: Math.max(sel.r1, sel.r2),
+        left: Math.min(sel.c1, sel.c2),
+        right: Math.max(sel.c1, sel.c2),
+    }), [sel]);
+
+    const blockHeight = block.bottom - block.top + 1;
+    const blockWidth = block.right - block.left + 1;
+    const hasBlock = blockHeight > 1 || blockWidth > 1;
+
+    const inBlock = (r, c) =>
+        r >= block.top && r <= block.bottom && c >= block.left && c <= block.right;
+
+    useEffect(() => {
+        const stop = () => { dragging.current = false; };
+        window.addEventListener('mouseup', stop);
+        return () => window.removeEventListener('mouseup', stop);
+    }, []);
+
     const cellRefs = useRef({});
     const registerCell = (r, c) => el => {
         cellRefs.current[`${r}:${c}`] = el;
     };
-    const focusCell = (r, c) => {
+    const focusCell = (r, c, { keepBlock = false } = {}) => {
         const el = cellRefs.current[`${r}:${c}`];
-        if (el) {
-            el.focus();
-            if (el.select) el.select();
-        }
+        if (!el) return;
+        if (keepBlock && document.activeElement !== el) keepSelection.current = true;
+        el.focus();
+        if (!keepBlock && el.select) el.select();
     };
 
     const setCell = useCallback((rowIndex, key, value) => {
+        setPasteNote(null);
         setRows(prev => {
             const next = prev.slice();
             next[rowIndex] = { ...next[rowIndex], [key]: value };
@@ -137,39 +171,152 @@ export default function PasteGrid({ initialRows = [], onAdd, onCancel, minRows =
         });
     }, []);
 
-    /** Writes a clipboard matrix into the grid starting at the anchor cell. */
+    /* --- selection -------------------------------------------------- */
+
+    const handleCellMouseDown = (event, rowIndex, colIndex) => {
+        if (event.shiftKey) {
+            // Extend from the existing anchor. Blocking the default keeps focus
+            // and the caret where the block started.
+            event.preventDefault();
+            setSel(prev => ({ ...prev, r2: rowIndex, c2: colIndex }));
+            focusCell(sel.r1, sel.c1, { keepBlock: true });
+            return;
+        }
+        dragging.current = true;
+        setSel({ r1: rowIndex, c1: colIndex, r2: rowIndex, c2: colIndex });
+    };
+
+    const handleCellMouseEnter = (rowIndex, colIndex) => {
+        if (!dragging.current) return;
+        setSel(prev =>
+            prev.r2 === rowIndex && prev.c2 === colIndex
+                ? prev
+                : { ...prev, r2: rowIndex, c2: colIndex });
+    };
+
+    const handleCellFocus = (rowIndex, colIndex) => {
+        if (keepSelection.current) {
+            keepSelection.current = false;
+            return;
+        }
+        setSel({ r1: rowIndex, c1: colIndex, r2: rowIndex, c2: colIndex });
+    };
+
+    /** Clicking a row number highlights that whole row; shift extends to it. */
+    const selectRow = (event, rowIndex) => {
+        event.preventDefault();
+        if (event.shiftKey) {
+            setSel(prev => ({ ...prev, r2: rowIndex, c2: LAST_COL }));
+            focusCell(sel.r1, sel.c1, { keepBlock: true });
+            return;
+        }
+        setSel({ r1: rowIndex, c1: 0, r2: rowIndex, c2: LAST_COL });
+        focusCell(rowIndex, 0, { keepBlock: true });
+    };
+
+    /* --- paste ------------------------------------------------------ */
+
+    /**
+     * The highlighted block is the whole target. Nothing is written outside it
+     * and no rows are created, so a clipboard bigger than the block is clipped
+     * and reported rather than spilling down the grid.
+     */
     const handlePaste = (event, rowIndex, colIndex) => {
+        const col = COLUMNS[colIndex];
         const text = event.clipboardData.getData('text/plain');
         if (!text) return;
 
         const matrix = parseClipboard(text);
-        const isSingleCell = matrix.length === 1 && matrix[0].length === 1;
-        if (isSingleCell && !matrix[0][0].includes('\n')) return; // let the browser handle it
+        const target = hasBlock
+            ? block
+            : { top: rowIndex, bottom: rowIndex, left: colIndex, right: colIndex };
+        const height = target.bottom - target.top + 1;
+        const width = target.right - target.left + 1;
+        const oneValue = matrix.length === 1 && matrix[0].length === 1;
+
+        // A single highlighted cell takes the paste the way any text field
+        // would, caret and selected text included.
+        if (height === 1 && width === 1) {
+            setPasteNote(null);
+            if (col.kind === 'number') {
+                event.preventDefault();
+                const el = event.target;
+                const current = String(el.value ?? '');
+                const start = el.selectionStart ?? current.length;
+                const end = el.selectionEnd ?? current.length;
+                const insert = toNumericString(matrix[0][0]);
+                setCell(rowIndex, col.key, current.slice(0, start) + insert + current.slice(end));
+                const caret = start + insert.length;
+                requestAnimationFrame(() => el.setSelectionRange?.(caret, caret));
+            }
+            return;
+        }
 
         event.preventDefault();
 
         setRows(prev => {
             const next = prev.slice();
-            while (next.length < rowIndex + matrix.length) next.push(emptyRow());
 
-            matrix.forEach((line, r) => {
-                line.forEach((raw, c) => {
-                    const col = COLUMNS[colIndex + c];
-                    if (!col) return; // pasted range is wider than the grid; drop the overflow
-                    const value = col.kind === 'number' ? toNumericString(raw) : raw.trim();
-                    next[rowIndex + r] = { ...next[rowIndex + r], [col.key]: value };
-                });
-            });
+            for (let r = 0; r < height; r++) {
+                for (let c = 0; c < width; c++) {
+                    // One copied value fills every highlighted cell; a range is
+                    // laid out from the top-left of the block.
+                    const raw = oneValue ? matrix[0][0] : matrix[r]?.[c];
+                    if (raw === undefined) continue;
 
-            // Keep a spare row at the bottom to paste into next.
-            if (!isRowEmpty(next[next.length - 1])) next.push(emptyRow());
+                    const targetCol = COLUMNS[target.left + c];
+                    const rowAt = target.top + r;
+                    if (!targetCol || !next[rowAt]) continue;
+
+                    const value = targetCol.kind === 'number'
+                        ? toNumericString(raw)
+                        : raw.trim();
+                    next[rowAt] = { ...next[rowAt], [targetCol.key]: value };
+                }
+            }
             return next;
         });
+
+        const clippedRows = oneValue ? 0 : Math.max(0, matrix.length - height);
+        const clippedCols = oneValue
+            ? 0
+            : Math.max(0, Math.max(...matrix.map(line => line.length)) - width);
+        const leftOut = [
+            clippedRows ? `${clippedRows} row${clippedRows === 1 ? '' : 's'}` : null,
+            clippedCols ? `${clippedCols} column${clippedCols === 1 ? '' : 's'}` : null,
+        ].filter(Boolean).join(' and ');
+
+        setPasteNote(
+            leftOut
+                ? `Filled the ${height * width} highlighted cells. Another ${leftOut} stayed on the ` +
+                'clipboard. Highlight a bigger block to bring the rest in.'
+                : null,
+        );
     };
+
+    /* --- keyboard --------------------------------------------------- */
 
     const handleKeyDown = (event, rowIndex, colIndex) => {
         const col = COLUMNS[colIndex];
         const lastRow = rows.length - 1;
+
+        // Shift with the vertical arrows grows the highlighted block. Plain
+        // left and right stay as caret movement inside the cell.
+        if (event.shiftKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+            event.preventDefault();
+            const step = event.key === 'ArrowDown' ? 1 : -1;
+            const next = sel.r2 + step;
+            if (next < 0) return;
+            if (next > lastRow) setRows(prev => [...prev, emptyRow()]);
+            setSel(prev => ({ ...prev, r2: next }));
+            return;
+        }
+
+        if (event.key === 'Escape' && hasBlock) {
+            event.preventDefault();
+            setSel(prev => ({ r1: prev.r1, c1: prev.c1, r2: prev.r1, c2: prev.c1 }));
+            return;
+        }
 
         if (event.key === 'Enter' && !event.shiftKey && col.kind !== 'multiline') {
             event.preventDefault();
@@ -184,23 +331,32 @@ export default function PasteGrid({ initialRows = [], onAdd, onCancel, minRows =
         }
     };
 
-    const addRow = () => setRows(prev => [...prev, emptyRow()]);
+    /* --- row actions ------------------------------------------------ */
 
-    const removeRow = index => setRows(prev => {
-        const next = prev.filter((_, i) => i !== index);
-        return next.length ? next : [emptyRow()];
-    });
+    const addRows = (count = 1) =>
+        setRows(prev => [...prev, ...Array.from({ length: count }, emptyRow)]);
 
-    const clearAll = () => setRows(Array.from({ length: minRows }, emptyRow));
+    const removeRow = index => {
+        setSel({ r1: 0, c1: 0, r2: 0, c2: 0 });
+        setRows(prev => {
+            const next = prev.filter((_, i) => i !== index);
+            return next.length ? next : [emptyRow()];
+        });
+    };
+
+    const clearAll = () => {
+        setPasteNote(null);
+        setSel({ r1: 0, c1: 0, r2: 0, c2: 0 });
+        setRows(Array.from({ length: minRows }, emptyRow));
+    };
 
     /* --- derived ---------------------------------------------------- */
 
     const filledRows = useMemo(() => rows.filter(r => !isRowEmpty(r)), [rows]);
 
     const readyRows = useMemo(() => filledRows
-        .filter(r => r.item_name.trim() !== '' && Number(r.quantity) > 0)
+        .filter(r => r.description.trim() !== '' && Number(r.quantity) > 0)
         .map(r => ({
-            item_name: r.item_name.trim(),
             description: r.description.trim(),
             quantity: Number(r.quantity),
             unit: normalizeUnit(r.unit),
@@ -228,11 +384,12 @@ export default function PasteGrid({ initialRows = [], onAdd, onCancel, minRows =
 
     return (
         <div className="space-y-3">
-            <p className="text-xs text-gray-700 dark:text-gray-300">
-                Copy a range from Excel and paste into the cell where it should start. One column of
-                numbers fills that column downward; a wider selection spreads across the columns to
-                its right. Check quantities against the paper before adding, since a wrong number
-                looks exactly like a right one.
+            <p className="max-w-2xl text-xs text-gray-700 dark:text-gray-300">
+                Drag across the cells you want to fill, or click a row number to take the whole row,
+                then paste. The copied values land inside the highlighted cells only, and one copied
+                value fills all of them. Paste with a single cell selected and it stays in that cell.
+                Check quantities against the paper before adding, since a wrong number looks exactly
+                like a right one.
             </p>
 
             <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
@@ -257,56 +414,78 @@ export default function PasteGrid({ initialRows = [], onAdd, onCancel, minRows =
                     <tbody>
                     {rows.map((row, rowIndex) => {
                         const amount = (Number(row.quantity) || 0) * (Number(row.estimated_unit_price) || 0);
+                        const rowInBlock = hasBlock && rowIndex >= block.top && rowIndex <= block.bottom;
+
                         return (
                             <tr
                                 key={rowIndex}
                                 className="odd:bg-white even:bg-gray-50/60 dark:odd:bg-gray-900 dark:even:bg-gray-900/40"
                             >
-                                <td className="border-b border-gray-100 dark:border-gray-800 px-2 py-1.5 text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-600 select-none align-top">
+                                <td
+                                    onMouseDown={e => selectRow(e, rowIndex)}
+                                    title="Highlight this row"
+                                    className={`cursor-pointer border-b border-gray-100 dark:border-gray-800 px-2 py-1.5 text-right text-[11px] tabular-nums select-none align-top ${
+                                        rowInBlock
+                                            ? 'font-semibold text-indigo-600 dark:text-indigo-400'
+                                            : 'text-gray-400 dark:text-gray-600'
+                                    }`}
+                                >
                                     {rowIndex + 1}
                                 </td>
 
-                                {COLUMNS.map((col, colIndex) => (
-                                    <td
-                                        key={col.key}
-                                        className="border-b border-l border-gray-100 dark:border-gray-800 p-0 align-top"
-                                    >
-                                        {col.kind === 'unit' ? (
-                                            <UnitCell
-                                                ref={registerCell(rowIndex, colIndex)}
-                                                value={row[col.key]}
-                                                onChange={val => setCell(rowIndex, col.key, val)}
-                                                onPaste={e => handlePaste(e, rowIndex, colIndex)}
-                                                onKeyDown={e => handleKeyDown(e, rowIndex, colIndex)}
-                                                className={cellBase}
-                                            />
-                                        ) : col.kind === 'multiline' ? (
-                                            <AutoGrowTextarea
-                                                ref={registerCell(rowIndex, colIndex)}
-                                                value={row[col.key]}
-                                                minRows={1}
-                                                maxRows={10}
-                                                spellCheck={false}
-                                                onChange={e => setCell(rowIndex, col.key, e.target.value)}
-                                                onPaste={e => handlePaste(e, rowIndex, colIndex)}
-                                                onKeyDown={e => handleKeyDown(e, rowIndex, colIndex)}
-                                                className={`${cellBase} font-mono leading-relaxed`}
-                                            />
-                                        ) : (
-                                            <input
-                                                ref={registerCell(rowIndex, colIndex)}
-                                                type="text"
-                                                inputMode={col.kind === 'number' ? 'decimal' : 'text'}
-                                                value={row[col.key]}
-                                                spellCheck={false}
-                                                onChange={e => setCell(rowIndex, col.key, e.target.value)}
-                                                onPaste={e => handlePaste(e, rowIndex, colIndex)}
-                                                onKeyDown={e => handleKeyDown(e, rowIndex, colIndex)}
-                                                className={`${cellBase} ${col.kind === 'number' ? 'text-right tabular-nums' : ''}`}
-                                            />
-                                        )}
-                                    </td>
-                                ))}
+                                {COLUMNS.map((col, colIndex) => {
+                                    const highlighted = hasBlock && inBlock(rowIndex, colIndex);
+
+                                    return (
+                                        <td
+                                            key={col.key}
+                                            onMouseDown={e => handleCellMouseDown(e, rowIndex, colIndex)}
+                                            onMouseEnter={() => handleCellMouseEnter(rowIndex, colIndex)}
+                                            className={`border-b border-l border-gray-100 dark:border-gray-800 p-0 align-top ${
+                                                highlighted ? 'bg-indigo-100/70 dark:bg-indigo-500/20' : ''
+                                            }`}
+                                        >
+                                            {col.kind === 'unit' ? (
+                                                <UnitCell
+                                                    ref={registerCell(rowIndex, colIndex)}
+                                                    value={row[col.key]}
+                                                    onChange={val => setCell(rowIndex, col.key, val)}
+                                                    onFocus={() => handleCellFocus(rowIndex, colIndex)}
+                                                    onPaste={e => handlePaste(e, rowIndex, colIndex)}
+                                                    onKeyDown={e => handleKeyDown(e, rowIndex, colIndex)}
+                                                    className={cellBase}
+                                                />
+                                            ) : col.kind === 'multiline' ? (
+                                                <AutoGrowTextarea
+                                                    ref={registerCell(rowIndex, colIndex)}
+                                                    value={row[col.key]}
+                                                    minRows={1}
+                                                    maxRows={10}
+                                                    spellCheck={false}
+                                                    placeholder="Brand, model, specifications, or other notes…"
+                                                    onChange={e => setCell(rowIndex, col.key, e.target.value)}
+                                                    onFocus={() => handleCellFocus(rowIndex, colIndex)}
+                                                    onPaste={e => handlePaste(e, rowIndex, colIndex)}
+                                                    onKeyDown={e => handleKeyDown(e, rowIndex, colIndex)}
+                                                    className={`${cellBase} font-mono leading-relaxed`}
+                                                />
+                                            ) : (
+                                                <input
+                                                    ref={registerCell(rowIndex, colIndex)}
+                                                    type="text"
+                                                    inputMode={col.kind === 'number' ? 'decimal' : 'text'}
+                                                    value={row[col.key]}
+                                                    spellCheck={false}
+                                                    onChange={e => setCell(rowIndex, col.key, e.target.value)}
+                                                    onFocus={() => handleCellFocus(rowIndex, colIndex)}
+                                                    onPaste={e => handlePaste(e, rowIndex, colIndex)}
+                                                    onKeyDown={e => handleKeyDown(e, rowIndex, colIndex)}
+                                                    className={`${cellBase} ${col.kind === 'number' ? 'text-right tabular-nums' : ''}`}
+                                                />
+                                            )}
+                                        </td>
+                                    );
+                                })}
 
                                 <td className="border-b border-l border-gray-100 dark:border-gray-800 px-2 py-1.5 text-right text-xs tabular-nums text-gray-600 dark:text-gray-400 align-top">
                                     {amount > 0 ? peso(amount) : ''}
@@ -329,14 +508,27 @@ export default function PasteGrid({ initialRows = [], onAdd, onCancel, minRows =
                 </table>
             </div>
 
+            {pasteNote && (
+                <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+                    {pasteNote}
+                </p>
+            )}
+
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
-                        onClick={addRow}
+                        onClick={() => addRows(1)}
                         className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500"
                     >
                         Add row
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => addRows(10)}
+                        className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500"
+                    >
+                        Add 10 rows
                     </button>
                     <button
                         type="button"
@@ -348,11 +540,16 @@ export default function PasteGrid({ initialRows = [], onAdd, onCancel, minRows =
                 </div>
 
                 <p className="text-xs text-gray-600 dark:text-gray-400">
+                    {hasBlock && (
+                        <span className="text-indigo-600 dark:text-indigo-400">
+                            {blockHeight * blockWidth} cells highlighted ·{' '}
+                        </span>
+                    )}
                     {readyRows.length} item{readyRows.length === 1 ? '' : 's'} ready
                     {incompleteCount > 0 && (
                         <span className="text-amber-600 dark:text-amber-400">
                             {' '}· {incompleteCount} row{incompleteCount === 1 ? '' : 's'} still need a
-                            name and quantity
+                            description and quantity
                         </span>
                     )}
                     {total > 0 && <span className="tabular-nums"> · {peso(total)}</span>}

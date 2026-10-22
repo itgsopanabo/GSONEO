@@ -76,6 +76,13 @@ export const STATUS_MAP = {
         style: 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
     },
 
+    // Cancelled by an administrator. Deliberately not red: it is a closed record,
+    // not a rejected one, and the two should not read as the same outcome.
+    800: {
+        label: 'Cancelled',
+        style: 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600'
+    },
+
     // Account State
     900: {
         label: 'Active',

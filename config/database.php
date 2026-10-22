@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Str;
+use Pdo\Mysql;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,6 +25,11 @@ $mysql = [
     'unix_socket' => env('DB_SOCKET', ''),
     'charset' => env('DB_CHARSET', 'utf8mb4'),
     'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+    // The session time zone, which decides two things: how TIMESTAMP columns
+    // (every created_at / updated_at, and audit_log) are read back, and what
+    // NOW() returns inside a query. Setting it here rather than relying on the
+    // database container means the application is right whatever the server is.
+    'timezone' => env('DB_TIMEZONE', '+08:00'),
     'prefix' => '',
     'prefix_indexes' => true,
     'strict' => true,

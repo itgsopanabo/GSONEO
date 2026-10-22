@@ -121,13 +121,6 @@ export default function Welcome({ auth, laravelVersion, phpVersion }) {
                                                 />
                                                 <span className="ms-2 text-xs text-gray-600 dark:text-gray-400">Remember me</span>
                                             </label>
-
-                                            <Link
-                                                href={route('register')}
-                                                className="text-xs text-gray-500 hover:text-[#FF2D20] transition"
-                                            >
-                                                Need an account?
-                                            </Link>
                                         </div>
 
                                         <button

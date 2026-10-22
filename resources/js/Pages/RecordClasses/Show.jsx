@@ -1,6 +1,7 @@
 // resources/js/Pages/RecordClasses/Show.jsx
 import { Head, Link } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.jsx';
+import { formatDate } from '@/Utils/formatDate.js';
 
 const TRIGGER_LABELS = {
     creation: 'the date of the record',
@@ -15,7 +16,7 @@ const SENSITIVITY_NOTES = {
     restricted: 'Visible only to users cleared for restricted material.',
 };
 
-const fmt = (v) => (v ? new Date(v).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—');
+const fmt = (v) => formatDate(v);
 
 function Row({ label, children }) {
     return (

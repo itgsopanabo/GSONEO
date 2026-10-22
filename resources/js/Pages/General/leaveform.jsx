@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Head } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.jsx';
+import DateInput from '@/Components/DateInput.jsx';
 
 const LEAVE_TYPES = [
     ['vacation', 'Vacation Leave'],
@@ -227,13 +228,17 @@ function Field({ label, type = 'text', value, onChange, placeholder, required })
                 {label}
                 {required && <span className="text-red-500"> *</span>}
             </span>
-            <input
-                type={type}
-                value={value}
-                onChange={onChange}
-                placeholder={placeholder}
-                className="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
-            />
+            {type === 'date' ? (
+                <DateInput value={value} onChange={onChange} className="w-full" />
+            ) : (
+                <input
+                    type={type}
+                    value={value}
+                    onChange={onChange}
+                    placeholder={placeholder}
+                    className="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                />
+            )}
         </label>
     );
 }

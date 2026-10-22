@@ -1,765 +1,532 @@
 import {Head, Link, router, usePage} from '@inertiajs/react';
-import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.jsx";
-import {STATUS_MAP} from '@/Constants/statusConfig.js';
-// import {PROCUREMENT_MODES} from '@/constants/ProcMode';
-
-import {useEffect, useMemo, useState} from "react";
-import {
-    Search, History, Printer, Share2, ChevronRight, ShieldCheck, X, Check, PanelRightClose, PanelRightOpen,
-} from "lucide-react";
-import ItemDescription from "@/Components/ItemDescripiton.jsx";
+import {useMemo, useState} from 'react';
+import {ArrowRight, Check, Copy, FileText, Plus, Printer, Search, ShieldCheck, X} from 'lucide-react';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.jsx';
+import Modal from '@/Components/Modal';
+import ItemDescription from '@/Components/ItemDescripiton.jsx';
+import {Detail, QueueTabs, StatusBadge, peso, qty, useOrderQueue} from '@/Components/Inventory/OrderParts.jsx';
+import {formatDate, formatDateTime, parseDate} from '@/Utils/formatDate.js';
 
 /**
  * COST FIELDS
  * -----------
- * `unit_cost` is the price of one unit. `total_estimated_cost` is the line
- * total (quantity × unit_cost) and is computed server-side in the controller —
- * the client never sends it. So any sum over items adds `total_estimated_cost`
- * directly and does NOT multiply by quantity again.
- *
- * Laravel's `decimal:2` cast serializes to a string, hence the Number()
- * wrappers in the reduces.
+ * `estimated_unit_cost` is the price of one unit. `total_estimated_cost` is the
+ * line total (quantity × unit cost), computed server-side — so sums add
+ * `total_estimated_cost` directly and never multiply by quantity again.
+ * Laravel's decimal cast serializes to a string, hence the Number() wrappers.
  */
+const totalOf = (items) => (items || []).reduce((sum, item) => sum + Number(item.total_estimated_cost || 0), 0);
 
-/**
- * Department options for the Create PR dropdown.
- *
- * If the controller passes a `departments` prop (an array of strings), that
- * wins over this list — see `departmentOptions` below.
- */
-const DEPARTMENTS = ['Administration', 'Accounting', 'Human Resources', 'Information Technology', 'Engineering', 'Operations', 'Procurement', 'Records',];
+const STATUS_PENDING = 1;
+const STATUS_DECLINED = 700;
 
-/**
- * Status filter chips for the queue.
- *
- * NOTE: verify these status codes against statusConfig.js. This file currently
- * contradicts itself — `pendingCount` treats status 0 as pending, while the
- * Accept/Decline buttons only render for status 1. Whichever is wrong, the
- * filter below inherits it.
- *
- * This filters only the rows on the current page. A draft sitting on page 3
- * will not appear when "Draft" is selected — see the note at the bottom of the
- * chat for the server-side version.
- */
-const STATUS_FILTERS = [
-    {key: 'all', label: 'All', match: () => true},
-    {key: 'draft', label: 'Draft', match: (pr) => pr.status === 0},
-    {key: 'pending', label: 'Pending', match: (pr) => pr.status === 1},
-];
-
-function formatRelativeTime(dateString) {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    const diffMs = Date.now() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+function personName(user) {
+    if (!user) return null;
+    return [user.emp_fname, user.emp_lname].filter(Boolean).join(' ') || null;
 }
 
-function formatCurrency(value) {
-    const num = Number(value);
-    if (Number.isNaN(num)) return '—';
-    return `₱${num.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+/** Whole days since a date. */
+function daysSince(value) {
+    const date = parseDate(value);
+    return date ? Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000)) : null;
 }
 
-function sumItems(items) {
-    return (items || []).reduce((sum, item) => sum + Number(item.total_estimated_cost || 0), 0);
+/** A week waiting is worth a look; two weeks is overdue. Same scale as the other pages. */
+function ageStyle(days) {
+    if (days >= 14) return 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300';
+    if (days >= 7) return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300';
+    return 'bg-gray-100 text-gray-600 dark:bg-gray-700/60 dark:text-gray-300';
 }
 
-export default function Index({purchaseRequests, departments}) {
-    const requests = purchaseRequests?.data || [];
-    const departmentOptions = departments?.length ? departments : DEPARTMENTS;
-    const {flash, auth, csrf_token} = usePage().props;
-    const userSection = auth?.user?.role?.section;
+const inputClass = 'w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500';
 
-    const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
-    const [selectedId, setSelectedId] = useState(requests[0]?.id ?? null);
-    const [processing, setProcessing] = useState(false);
+export default function Index({purchaseRequests, focusOrder, filters, tabs = [], departments = []}) {
+    const {auth} = usePage().props;
+    const permissions = auth?.permissions ?? [];
+    const can = (permission) => permissions.includes(permission);
 
-    const [declineModal, setDeclineModal] = useState({isOpen: false, reason: ''});
-    const [approveModal, setApproveModal] = useState({isOpen: false});
-    const [createModal, setCreateModal] = useState({
-        isOpen: false, requester_name: '', requester_department: '', remarks_or_notes: '',
+    const rows = useMemo(() => purchaseRequests?.data ?? [], [purchaseRequests]);
+    const {view, search, setSearch, selected, setSelectedId, switchTab} = useOrderQueue({
+        routeName: 'purchase-requests.index', filters, defaultView: tabs[0]?.key, rows, focusOrder,
     });
+    const counts = Object.fromEntries(tabs.map((tab) => [tab.key, tab.count]));
+
+    const [processing, setProcessing] = useState(false);
+    const [dialog, setDialog] = useState(null);   // 'verify' | 'decline' | 'create'
+    const [reason, setReason] = useState('');
+    const [createForm, setCreateForm] = useState({requester_department: '', remarks_or_notes: ''});
     const [createErrors, setCreateErrors] = useState({});
-    const [successModal, setSuccessModal] = useState({isOpen: false, prNumber: '', id: null});
+    const [created, setCreated] = useState(null);
 
-    const [isPanelCollapsed, setIsPanelCollapsed] = useState(true);
+    const items = selected?.items ?? [];
+    const total = totalOf(items);
+    const canDecide = selected?.status === STATUS_PENDING && can('pr.verify');
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            router.reload({
-                only: ['purchaseRequests'], preserveScroll: true, preserveState: true
-            });
-        }, 5000);
-
-        return () => clearInterval(interval);
-    }, []);
-
-    const filteredRequests = useMemo(() => {
-        const matcher = STATUS_FILTERS.find(f => f.key === statusFilter)?.match ?? (() => true);
-        const q = search.trim().toLowerCase();
-        return requests.filter(pr => {
-            if (!matcher(pr)) return false;
-            if (!q) return true;
-            return pr.pr_number?.toLowerCase().includes(q) || pr.requester_name?.toLowerCase().includes(q) || pr.requester_department?.toLowerCase().includes(q);
-        });
-    }, [requests, search, statusFilter]);
-
-    const statusCounts = useMemo(() => Object.fromEntries(STATUS_FILTERS.map(f => [f.key, requests.filter(f.match).length])), [requests]);
-
-    // Keep a valid selection as the polled list and the active filter change.
-    // Must sit below `filteredRequests` — the dependency array is read during
-    // render, so referencing it any earlier throws on the temporal dead zone.
-    useEffect(() => {
-        if (filteredRequests.length === 0) {
-            setSelectedId(null);
-            return;
-        }
-        if (!filteredRequests.some(r => r.id === selectedId)) {
-            setSelectedId(filteredRequests[0].id);
-        }
-    }, [filteredRequests, selectedId]);
-
-    const pendingCount = useMemo(() => requests.filter(pr => pr.status === 0).length, [requests]);
-    const selected = requests.find(r => r.id === selectedId) || null;
-
-    function triggerApproveConfirmation() {
-        if (!selected) return;
-        setApproveModal({isOpen: true});
+    function close() {
+        if (!processing) setDialog(null);
     }
 
-    function closeApproveModal() {
-        if (processing) return;
-        setApproveModal({isOpen: false});
-    }
-
-    function handleApprove() {
-        if (!selected) return;
-
+    function verify() {
         setProcessing(true);
         router.post(route('purchase-requests.verify', {purchase_request: selected.id}), {}, {
             preserveScroll: true,
-            onSuccess: () => setApproveModal({isOpen: false}),
+            onSuccess: () => setDialog(null),
             onFinish: () => setProcessing(false),
         });
     }
 
-    function triggerDeclineConfirmation() {
-        if (!selected) return;
-        setDeclineModal({isOpen: true, reason: ''});
-    }
-
-    function closeDeclineModal() {
-        setDeclineModal({isOpen: false, reason: ''});
-    }
-
-    function submitDecline() {
-        if (!selected || !declineModal.reason.trim()) return;
+    function decline() {
+        if (!reason.trim()) return;
         setProcessing(true);
-        router.post(route('purchase-requests.decline', {purchase_request: selected.id}), {
-            reason_to_decline: declineModal.reason,
-        }, {
-            preserveScroll: true, onSuccess: () => {
-                closeDeclineModal();
-            }, onFinish: () => setProcessing(false),
+        router.post(route('purchase-requests.decline', {purchase_request: selected.id}), {reason_to_decline: reason.trim()}, {
+            preserveScroll: true,
+            onSuccess: () => setDialog(null),
+            onFinish: () => setProcessing(false),
         });
     }
 
-    // --- Create PR ---------------------------------------------------------
-
-    function openCreateModal() {
-        const userDept = auth?.user?.role?.section ?? '';
+    function openCreate() {
+        const section = auth?.user?.role?.section ?? '';
         setCreateErrors({});
-        setCreateModal({
-            isOpen: true,
-            requester_name: auth?.user?.name ?? '',
-            requester_department: departmentOptions.includes(userDept) ? userDept : '',
-            remarks_or_notes: '',
-        });
+        setCreateForm({requester_department: departments.includes(section) ? section : '', remarks_or_notes: ''});
+        setDialog('create');
     }
 
-    function closeCreateModal() {
-        if (processing) return;
-        setCreateModal(prev => ({...prev, isOpen: false}));
-    }
-
-    function setCreateField(field, value) {
-        setCreateModal(prev => ({...prev, [field]: value}));
-    }
-
-    const isCreateValid = Boolean(createModal.requester_name.trim() && createModal.requester_department.trim() && createModal.remarks_or_notes.trim());
-
-    function submitCreate() {
-        if (!isCreateValid) return;
+    function submitCreate(e) {
+        e.preventDefault();
         setProcessing(true);
         setCreateErrors({});
         router.post(route('purchase-requests.store'), {
-            requester_name: createModal.requester_name.trim(),
-            requester_department: createModal.requester_department.trim(),
-            remarks_or_notes: createModal.remarks_or_notes.trim(),
+            requester_department: createForm.requester_department.trim(),
+            remarks_or_notes: createForm.remarks_or_notes.trim(),
         }, {
             preserveScroll: true,
             onSuccess: (page) => {
-                setCreateModal(prev => ({...prev, isOpen: false}));
-                const created = page.props.flash?.created_pr;
-                if (created) {
-                    setSuccessModal({isOpen: true, prNumber: created.pr_number, id: created.id});
-                    setStatusFilter('all');
-                    setSelectedId(created.id);
-                    setIsPanelCollapsed(false);
-                }
+                setDialog(null);
+                if (page.props.flash?.created_pr) setCreated(page.props.flash.created_pr);
             },
             onError: (errors) => setCreateErrors(errors),
             onFinish: () => setProcessing(false),
         });
     }
 
-    return (<AuthenticatedLayout>
-        <Head title="Procurement Section - Purchase Request Management"/>
-
-        <div className="py-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
-            {/* Header Actions */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-                <div>
-                    <h1 className="text-xl font-semibold text-gray-900 dark:text-white tracking-tight">
-                        Purchase Requests
-                    </h1>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Manage, monitor, and process procurement tracks.
-                    </p>
-                </div>
-
-                {/*
-                    Was: {userSection === 'Administration' && ( ... )}
-                    Guard removed so the button always shows. Once you've confirmed
-                    what auth.user.role.section actually returns, wrap this back up —
-                    and back it with a policy on the store route, since hiding the
-                    button isn't a permission.
-                */}
-                <div>
-                    <button
-                        type="button"
-                        onClick={openCreateModal}
-                        className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold tracking-wide text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 active:bg-indigo-700 transition duration-150 ease-in-out shadow-sm"
-                    >
-                        Create Request
-                    </button>
-                </div>
-            </div>
-
-            {/* Master-detail layout */}
-            <div
-                className={`grid grid-cols-1 gap-6 h-[calc(100vh-220px)] min-h-[560px] transition-[grid-template-columns] duration-300 ease-in-out ${isPanelCollapsed ? 'lg:grid-cols-[1fr_56px]' : 'lg:grid-cols-[360px_1fr]'}`}
-            >
-
-                {/* Left: Verify Queue */}
-                <div
-                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700/60 shadow-sm flex flex-col overflow-hidden">
-                    <div
-                        className="px-5 py-4 border-b border-gray-100 dark:border-gray-700/60 flex items-center justify-between">
-                        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Verify Requests</h2>
-                        <span
-                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
-                            {pendingCount} Pending
-                        </span>
+    return (
+        <AuthenticatedLayout>
+            <Head title="Purchase Requests"/>
+            <div className="py-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                {/* Header */}
+                <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6">
+                    <div>
+                        <h1 className="text-xl font-semibold text-gray-900 dark:text-white tracking-tight">Purchase Requests</h1>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            File requests, and verify or decline the ones submitted by the departments.
+                        </p>
                     </div>
-
-                    <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700/60">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"/>
-                            <input
-                                type="text"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search PR ID, Vendor..."
-                                className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Status filter */}
-                    <div
-                        className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700/60 flex items-center gap-1.5">
-                        {STATUS_FILTERS.map((f) => {
-                            const isActive = statusFilter === f.key;
-                            return (<button
-                                key={f.key}
+                    <div className="flex flex-wrap items-center gap-3">
+                        {tabs.length > 0 && <QueueTabs tabs={tabs} active={view} counts={counts} onChange={switchTab}/>}
+                        {can('pr.create') && (
+                            <button
                                 type="button"
-                                aria-pressed={isActive}
-                                onClick={() => setStatusFilter(f.key)}
-                                className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/40 ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900/30'}`}
+                                onClick={openCreate}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
                             >
-                                {f.label}
-                                <span className={`ml-1.5 ${isActive ? 'text-indigo-100' : 'text-gray-400'}`}>
-                                    {statusCounts[f.key] ?? 0}
-                                </span>
-                            </button>);
-                        })}
+                                <Plus className="w-4 h-4"/>
+                                New request
+                            </button>
+                        )}
                     </div>
-
-                    <div className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700/40">
-                        {filteredRequests.length > 0 ? filteredRequests.map((pr) => {
-                            const isActive = pr.id === selectedId;
-                            return (<button
-                                key={pr.id}
-                                onClick={() => {
-                                    setSelectedId(pr.id);
-                                    if (isPanelCollapsed) setIsPanelCollapsed(false);
-                                }}
-                                className={`w-full text-left px-4 py-3.5 transition-colors border-l-2 ${isActive ? 'bg-indigo-50/60 dark:bg-indigo-500/10 border-indigo-600' : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-900/20'}`}
-                            >
-                                <div className="flex items-center justify-between mb-1">
-                                        <span
-                                            className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
-                                            {pr.pr_number}
-                                        </span>
-                                    <span className="text-[10px] text-gray-400">
-                                            {formatRelativeTime(pr.created_at)}
-                                        </span>
-                                </div>
-                                <p className="text-xs font-medium text-gray-900 dark:text-white truncate">
-                                    {pr.requester_name || 'Untitled request'}
-                                </p>
-                                <div className="mt-1.5 flex items-center gap-2">
-                                    {pr.items != null && (<span
-                                        className="text-[11px] font-semibold text-gray-700 dark:text-gray-300">
-                                        {formatCurrency(sumItems(pr.items))}
-                                    </span>)}
-                                    <span
-                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_MAP[pr.status]?.style || 'bg-gray-50 border-gray-200'}`}>
-                                            <span className="w-1 h-1 rounded-full bg-current"></span>
-                                        {STATUS_MAP[pr.status]?.label || 'Unknown'}
-                                        </span>
-                                </div>
-                                {pr.remarks_or_notes && (
-                                    <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                                        {pr.remarks_or_notes}
-                                    </p>)}
-                            </button>);
-                        }) : (<div className="px-6 py-16 text-center">
-                            <p className="text-xs font-medium text-gray-900 dark:text-white">No requests found</p>
-                            <p className="mt-1 text-[11px] text-gray-500">
-                                {statusFilter === 'all' ? 'Try a different search.' : 'Try a different search, or switch to All.'}
-                            </p>
-                        </div>)}
-                    </div>
-
-                    {purchaseRequests?.links && purchaseRequests.links.length > 3 && (<div
-                        className="px-4 py-3 bg-gray-50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-700/60 flex items-center justify-center gap-1">
-                        {purchaseRequests.links.map((link, index) => (<Link
-                            key={index}
-                            href={link.url || '#'}
-                            dangerouslySetInnerHTML={{__html: link.label}}
-                            className={`px-2.5 py-1 text-[11px] rounded-md border transition-all ${link.active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-50'} ${!link.url ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        />))}
-                    </div>)}
                 </div>
 
-                {/* Right: Detail panel */}
-                {isPanelCollapsed ? (/* Collapsed strip */
-                    <div
-                        className="hidden lg:flex bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700/60 shadow-sm flex-col items-center py-4">
-                        <button
-                            onClick={() => setIsPanelCollapsed(false)}
-                            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-900/40 transition-colors"
-                            title="Expand details panel"
-                        >
-                            <PanelRightOpen className="w-4 h-4"/>
-                        </button>
-                    </div>) : (<div
-                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700/60 shadow-sm flex flex-col overflow-hidden">
-                    {!selected ? (<div className="flex-1 flex items-center justify-center">
-                        <div className="text-center">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">No request selected</p>
-                            <p className="mt-1 text-xs text-gray-500">Choose a request from the queue to review
-                                it.</p>
-                        </div>
-                    </div>) : (<>
-                        {/* Header */}
-                        <div
-                            className="px-6 py-5 border-b border-gray-100 dark:border-gray-700/60 flex items-start justify-between">
-                            <div>
-                                <div
-                                    className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 mb-1.5">
-
-                                    <span>Created by {selected.requester_name || 'N/A'}</span>
-                                </div>
-                                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                                    {selected.pr_number || selected.requester_department || 'Purchase Request'}
-                                </h2>
-                            </div>
-                            <div className="flex items-center gap-1">
-
-                                <button
-                                    onClick={() => setIsPanelCollapsed(true)}
-                                    className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-900/40 transition-colors hidden lg:inline-flex"
-                                    title="Collapse panel">
-                                    <PanelRightClose className="w-4 h-4"/>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Body */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {/* Request Summary */}
-                                <div
-                                    className="md:col-span-3 border border-gray-100 dark:border-gray-700/40 rounded-xl p-5">
-                                    <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
-                                        Request Summary
-                                    </p>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                                        <div>
-                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                                                Requester
-                                            </p>
-                                            <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                                {selected.requester_name || '—'}
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                                                Department
-                                            </p>
-                                            <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                                {selected.requester_department || '—'}
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                                                Date Created
-                                            </p>
-                                            <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                                {selected.created_at ? new Date(selected.created_at).toLocaleDateString(undefined, {
-                                                    year: 'numeric', month: 'short', day: 'numeric'
-                                                }) : '—'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                                            Purpose/Reason:
-                                        </p>
-                                        <p className={'text-xs font-medium text-gray-900 dark:text-white'}>{selected.remarks_or_notes}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Line Items */}
-                            <div
-                                className="border border-gray-100 dark:border-gray-700/40 rounded-xl overflow-hidden">
-                                <div
-                                    className="px-5 py-3 border-b border-gray-100 dark:border-gray-700/40 flex items-center justify-between bg-gray-50 dark:bg-gray-900/30">
-                                    <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                        Line Items
-                                    </p>
-                                    <span className="text-[11px] text-gray-400">
-                                            {(selected.items?.length ?? 0)} Items Total
-                                        </span>
-                                </div>
-                                <table className="w-full table-fixed text-left">
-                                    <thead>
-                                    <tr className="border-b border-gray-100 dark:border-gray-700/40">
-                                        <th className="px-5 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Item
-                                            Description
-                                        </th>
-                                        <th className="px-5 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider text-right">Qty</th>
-                                        <th className="px-5 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider text-right">Total</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700/40">
-                                    {(selected.items || []).map((item, idx) => (<tr key={item.id ?? idx}>
-                                        <td className="px-5 py-3 text-xs align-top">
-                                            <div
-                                                className="font-medium text-gray-900 dark:text-white break-words">{item.item_name}</div>
-                                            <ItemDescription text={item.item_desc}/>
-                                        </td>
-                                        <td className="px-5 py-3 text-xs text-gray-700 dark:text-gray-300 text-right">
-                                            {item.quantity} {item.unit || ''}
-                                        </td>
-                                        <td className="px-5 py-3 text-xs font-medium text-gray-900 dark:text-white text-right">
-                                            {formatCurrency(item.total_estimated_cost)}
-                                        </td>
-                                    </tr>))}
-                                    {(!selected.items || selected.items.length === 0) && (<tr>
-                                        <td colSpan="3" className="px-5 py-6 text-center text-xs text-gray-400">
-                                            No line items on this request.
-                                        </td>
-                                    </tr>)}
-                                    </tbody>
-                                    <tfoot>
-                                    <tr className="border-t border-gray-100 dark:border-gray-700/40">
-                                        <td colSpan="2"
-                                            className="px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">
-                                            Grand Total
-                                        </td>
-                                        <td className="px-5 py-3 text-sm font-bold text-gray-900 dark:text-white text-right">
-                                            {formatCurrency(sumItems(selected.items))}
-                                        </td>
-                                    </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-
-                        </div>
-
-                        {/* Actions Buttons */}
-                        <div
-                            className="px-6 py-4 border-t border-gray-100 dark:border-gray-700/60 flex items-center justify-end gap-4">
-                            <div className="flex items-center gap-2 shrink-0">
-
-                                <div className="flex items-center gap-2 shrink-0">
-                                    {selected.status === 1 && (<>
-
-                                        {/*From 0 -> 700 (Reject/Decline)*/}
-                                        <button
-                                            type="button"
-                                            onClick={triggerDeclineConfirmation}
-                                            disabled={processing}
-                                            className="inline-flex items-center px-5 py-2.5 bg-red-800 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-full shadow-sm transition-colors"
-                                        >
-                                            Decline PR
-                                        </button>
-
-                                        {/* From 0 ->  100 (Verified) */}
-                                        <button
-                                            type="button"
-                                            onClick={triggerApproveConfirmation}
-                                            disabled={processing}
-                                            className="inline-flex items-center px-5 py-2.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-full shadow-sm transition-colors"
-                                        >
-                                            Accept PR
-                                        </button>
-                                    </>)}
-                                </div>
-                            </div>
-                        </div>
-
-                    </>)}
-                </div>)}
-
-            </div>
-        </div>
-
-        {/* Create PR Modal */}
-        {createModal.isOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                <div
-                    className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 border border-gray-100 dark:border-gray-700">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-                        Create Purchase Request
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-                        Fill in the requester details, the purpose of this request, and the items being requested.
-                    </p>
-
-                    <div className="space-y-4 mb-6">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label
-                                    className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-1">
-                                    Requester Name
-                                </label>
+                {/* Master-detail */}
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr] lg:h-[calc(100vh-220px)] lg:min-h-[560px]">
+                    {/* Left: queue */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700/60 shadow-sm flex flex-col overflow-hidden max-h-[70vh] lg:max-h-none">
+                        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700/60">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
                                 <input
-                                    type="text"
-                                    autoFocus
-                                    value={createModal.requester_name}
-                                    onChange={(e) => setCreateField('requester_name', e.target.value)}
-                                    placeholder="Juan Dela Cruz"
-                                    className="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    type="search"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="Search PR number, office or purpose…"
+                                    className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400"
                                 />
-                                {createErrors.requester_name && (
-                                    <p className="mt-1 text-xs text-red-600">{createErrors.requester_name}</p>)}
-                            </div>
-
-                            <div>
-                                <label
-                                    className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-1">
-                                    Requester Department
-                                </label>
-                                <select
-                                    value={createModal.requester_department}
-                                    onChange={(e) => setCreateField('requester_department', e.target.value)}
-                                    className="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                >
-                                    <option value="">Select a department</option>
-                                    {departmentOptions.map((dept) => (
-                                        <option key={dept} value={dept}>{dept}</option>))}
-                                </select>
-                                {createErrors.requester_department && (
-                                    <p className="mt-1 text-xs text-red-600">{createErrors.requester_department}</p>)}
                             </div>
                         </div>
 
-                        <div>
-                            <label
-                                className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-1">
-                                Purpose / Reason
-                            </label>
-                            <textarea
-                                rows={3}
-                                value={createModal.remarks_or_notes}
-                                onChange={(e) => setCreateField('remarks_or_notes', e.target.value)}
-                                placeholder="Explain what this purchase request is for..."
-                                className="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                            />
-                            {createErrors.remarks_or_notes && (
-                                <p className="mt-1 text-xs text-red-600">{createErrors.remarks_or_notes}</p>)}
+                        <div className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700/40">
+                            {rows.length > 0 ? rows.map((pr) => {
+                                const isActive = selected?.id === pr.id;
+                                const days = daysSince(pr.created_at);
+                                const waiting = pr.status === STATUS_PENDING || pr.status === 0;
+                                return (
+                                    <button
+                                        key={pr.id}
+                                        type="button"
+                                        onClick={() => setSelectedId(pr.id)}
+                                        aria-current={isActive ? 'true' : undefined}
+                                        className={`w-full text-left px-4 py-3.5 transition-colors border-l-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${isActive ? 'bg-indigo-50/60 dark:bg-indigo-500/10 border-indigo-600' : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-900/20'}`}
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-xs font-semibold font-mono text-gray-900 dark:text-white truncate">{pr.pr_number}</span>
+                                            {waiting && days !== null ? (
+                                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${ageStyle(days)}`}>
+                                                    {days === 0 ? 'Today' : `${days}d`}
+                                                </span>
+                                            ) : (
+                                                <span className="shrink-0 text-[10px] text-gray-400">{formatDate(pr.created_at)}</span>
+                                            )}
+                                        </div>
+                                        <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400 truncate">{pr.requester_department || 'No department'}</p>
+                                        <div className="mt-1.5 flex items-center gap-2 min-w-0">
+                                            <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-300 tabular-nums shrink-0">{peso.format(totalOf(pr.items))}</span>
+                                            {view === 'verified' && <StatusBadge status={pr.status}/>}
+                                        </div>
+                                        {pr.remarks_or_notes && (
+                                            <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">{pr.remarks_or_notes}</p>
+                                        )}
+                                    </button>
+                                );
+                            }) : (
+                                <div className="px-6 py-16 text-center">
+                                    <FileText className="h-8 w-8 mx-auto text-gray-300 dark:text-gray-600 mb-3"/>
+                                    <p className="text-xs font-medium text-gray-900 dark:text-white">
+                                        {filters?.search ? 'No matches' : view === 'pending' ? 'Nothing waiting for verification' : 'Nothing here'}
+                                    </p>
+                                    <p className="mt-1 text-[11px] text-gray-500">
+                                        {filters?.search ? 'Try a different search.' : view === 'pending' ? 'Submitted requests appear here.' : 'Try another tab.'}
+                                    </p>
+                                </div>
+                            )}
                         </div>
+
+                        {purchaseRequests?.links && purchaseRequests.links.length > 3 && (
+                            <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-700/60 flex flex-wrap items-center justify-center gap-1">
+                                {purchaseRequests.links.map((link, index) => (
+                                    <Link
+                                        key={index}
+                                        href={link.url || '#'}
+                                        preserveState
+                                        preserveScroll
+                                        dangerouslySetInnerHTML={{__html: link.label}}
+                                        className={`px-2.5 py-1 text-[11px] rounded-md border transition-all ${link.active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900/40'} ${!link.url ? 'opacity-50 pointer-events-none' : ''}`}
+                                    />
+                                ))}
+                            </div>
+                        )}
                     </div>
 
-                    <div className="flex justify-end gap-3">
-                        <button
-                            type="button"
-                            onClick={closeCreateModal}
-                            disabled={processing}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                        >
+                    {/* Right: detail */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700/60 shadow-sm flex flex-col overflow-hidden min-h-[400px]">
+                        {!selected ? (
+                            <div className="flex-1 flex items-center justify-center">
+                                <div className="text-center px-6">
+                                    <FileText className="h-8 w-8 mx-auto text-gray-300 dark:text-gray-600 mb-3"/>
+                                    <p className="text-sm font-medium text-gray-900 dark:text-white">No request selected</p>
+                                    <p className="mt-1 text-xs text-gray-500">Choose a request from the list to review it.</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Header */}
+                                <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700/60 flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">{selected.requester_department || 'No department'}</p>
+                                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white font-mono">{selected.pr_number}</h2>
+                                        <div className="mt-1.5"><StatusBadge status={selected.status}/></div>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <a
+                                            href={route('purchase-requests.pdf', selected.id)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-900/40"
+                                        >
+                                            <Printer className="w-3.5 h-3.5"/>
+                                            PDF
+                                        </a>
+                                        {can('monitoring.view') && (
+                                            <Link
+                                                href={route('request-monitoring.show', selected.id)}
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/30 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+                                            >
+                                                Timeline
+                                                <ArrowRight className="w-3.5 h-3.5"/>
+                                            </Link>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Body */}
+                                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                    {selected.status === STATUS_DECLINED && (
+                                        <div className="rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50/60 dark:bg-rose-500/5 p-5">
+                                            <p className="text-[11px] font-semibold text-rose-800 dark:text-rose-300 uppercase tracking-wider">Declined</p>
+                                            <p className="mt-2 text-sm text-rose-900 dark:text-rose-200">{selected.reason_to_decline || 'No reason recorded.'}</p>
+                                            <p className="mt-1 text-[11px] text-rose-700/80 dark:text-rose-300/80">
+                                                {formatDateTime(selected.declined_At)}
+                                                {personName(selected.declined_by) && ` by ${personName(selected.declined_by)}`}
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div className="border border-gray-100 dark:border-gray-700/40 rounded-xl p-5">
+                                        <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Request</p>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <Detail label="Filed">
+                                                {formatDate(selected.created_at)}
+                                                <span className="block text-[11px] font-normal text-gray-500">
+                                                    {daysSince(selected.created_at) === 0 ? 'Today' : `${daysSince(selected.created_at)} days ago`}
+                                                </span>
+                                            </Detail>
+                                            <Detail label="Encoded by">
+                                                {personName(selected.encoder) ?? '—'}
+                                                {selected.encoded_at && <span className="block text-[11px] font-normal text-gray-500">{formatDate(selected.encoded_at)}</span>}
+                                            </Detail>
+                                            <Detail label="Verified by">
+                                                {personName(selected.verified_by) ?? (selected.status === STATUS_PENDING ? 'Waiting' : '—')}
+                                                {selected.verified_At && <span className="block text-[11px] font-normal text-gray-500">{formatDate(selected.verified_At)}</span>}
+                                            </Detail>
+                                            <Detail label="Mode of procurement">{selected.mode_of_procurement || 'Not yet tagged'}</Detail>
+                                        </div>
+                                        <div className="mt-4">
+                                            <Detail label="Purpose">
+                                                <span className="font-normal whitespace-pre-line">{selected.remarks_or_notes || '—'}</span>
+                                            </Detail>
+                                        </div>
+                                    </div>
+
+                                    {/* Items */}
+                                    <div className="border border-gray-100 dark:border-gray-700/40 rounded-xl overflow-hidden">
+                                        <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700/40 flex items-center justify-between bg-gray-50 dark:bg-gray-900/30">
+                                            <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Items requested</p>
+                                            <span className="text-[11px] text-gray-400">{items.length} {items.length === 1 ? 'line' : 'lines'}</span>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left">
+                                                <thead>
+                                                <tr className="border-b border-gray-100 dark:border-gray-700/40">
+                                                    <th className="px-5 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider w-8">#</th>
+                                                    <th className="px-5 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Item</th>
+                                                    <th className="px-5 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider text-right">Quantity</th>
+                                                    <th className="px-5 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider text-right">Unit cost</th>
+                                                    <th className="px-5 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider text-right">Amount</th>
+                                                </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700/40">
+                                                {items.map((item, index) => (
+                                                    <tr key={item.id ?? index}>
+                                                        <td className="px-5 py-3 text-xs text-gray-400 tabular-nums align-top">{index + 1}</td>
+                                                        <td className="px-5 py-3 text-xs align-top"><ItemDescription text={item.item_desc}/></td>
+                                                        <td className="px-5 py-3 text-xs text-gray-900 dark:text-white text-right tabular-nums whitespace-nowrap align-top">
+                                                            {qty.format(Number(item.quantity ?? 0))} {item.unit || ''}
+                                                        </td>
+                                                        <td className="px-5 py-3 text-xs text-gray-600 dark:text-gray-300 text-right tabular-nums align-top">
+                                                            {peso.format(Number(item.estimated_unit_cost ?? 0))}
+                                                        </td>
+                                                        <td className="px-5 py-3 text-xs font-medium text-gray-900 dark:text-white text-right tabular-nums align-top">
+                                                            {peso.format(Number(item.total_estimated_cost ?? 0))}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {items.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={5} className="px-5 py-6 text-center text-xs text-gray-400">
+                                                            No line items yet — they are added when the request is encoded.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                                </tbody>
+                                                <tfoot>
+                                                <tr className="border-t border-gray-100 dark:border-gray-700/40">
+                                                    <td colSpan={4} className="px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">Estimated total</td>
+                                                    <td className="px-5 py-3 text-sm font-bold text-gray-900 dark:text-white text-right tabular-nums">{peso.format(total)}</td>
+                                                </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700/60 flex flex-wrap items-center justify-end gap-3">
+                                    {canDecide ? (
+                                        <>
+                                            <p className="mr-auto text-[11px] text-gray-500 dark:text-gray-400">
+                                                Check the items and purpose, then verify or decline.
+                                            </p>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setReason('');
+                                                    setDialog('decline');
+                                                }}
+                                                className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30 rounded-full hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                                            >
+                                                <X className="w-4 h-4"/>
+                                                Decline…
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setDialog('verify')}
+                                                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-full shadow-sm"
+                                            >
+                                                <ShieldCheck className="w-4 h-4"/>
+                                                Verify…
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <p className="mr-auto text-xs text-gray-500 dark:text-gray-400">
+                                            {selected.status === 0 && 'A draft. It reaches this queue once the encoder submits it.'}
+                                            {selected.status === STATUS_PENDING && 'Waiting for someone with the verify permission.'}
+                                            {selected.status === STATUS_DECLINED && 'Declined. The department can file a new request.'}
+                                            {[100, 110, 120, 130, 200, 205].includes(selected.status) && 'Verified. It continues in Canvas Forms.'}
+                                        </p>
+                                    )}
+                                    {[100, 110, 120, 130, 200, 205].includes(selected.status) && can('pr.canvass') && (
+                                        <Link
+                                            href={route('canvas.index')}
+                                            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
+                                        >
+                                            Continue to Canvas Forms
+                                            <ArrowRight className="w-4 h-4"/>
+                                        </Link>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Verify */}
+            <Modal show={dialog === 'verify' && Boolean(selected)} onClose={close} maxWidth="md">
+                <div className="bg-white dark:bg-gray-800 p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Verify {selected?.pr_number}?</h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">It is marked verified in your name and moves on to canvassing.</p>
+                    <dl className="mt-4 divide-y divide-gray-100 dark:divide-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 text-sm">
+                        {[
+                            ['Office', selected?.requester_department || '—'],
+                            ['Items', `${items.length} ${items.length === 1 ? 'line' : 'lines'}`],
+                            ['Estimated total', <span key="t" className="tabular-nums font-semibold">{peso.format(total)}</span>],
+                        ].map(([label, value]) => (
+                            <div key={label} className="flex items-center justify-between gap-4 px-4 py-2.5">
+                                <dt className="text-gray-500 dark:text-gray-400">{label}</dt>
+                                <dd className="text-gray-900 dark:text-gray-100 text-right">{value}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                    <div className="mt-6 flex justify-end gap-3">
+                        <button type="button" onClick={close} disabled={processing} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                            Cancel
+                        </button>
+                        <button type="button" onClick={verify} disabled={processing} className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
+                            {processing ? 'Verifying…' : 'Verify request'}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Decline */}
+            <Modal show={dialog === 'decline' && Boolean(selected)} onClose={close} maxWidth="md">
+                <div className="bg-white dark:bg-gray-800 p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Decline {selected?.pr_number}?</h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">The office sees your reason. A declined request cannot be reopened; they file a new one.</p>
+                    <label htmlFor="decline-reason" className="mt-4 block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-1">Reason</label>
+                    <textarea
+                        id="decline-reason"
+                        rows={3}
+                        autoFocus
+                        maxLength={1000}
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        placeholder="e.g. Items are not in the approved procurement plan."
+                        className={`${inputClass} focus:border-rose-500 focus:ring-rose-500`}
+                    />
+                    <div className="mt-6 flex justify-end gap-3">
+                        <button type="button" onClick={close} disabled={processing} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                            Cancel
+                        </button>
+                        <button type="button" onClick={decline} disabled={processing || !reason.trim()} className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-rose-600 hover:bg-rose-700 disabled:opacity-50">
+                            {processing ? 'Declining…' : 'Decline request'}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* New request */}
+            <Modal show={dialog === 'create'} onClose={close} maxWidth="lg">
+                <form onSubmit={submitCreate} className="bg-white dark:bg-gray-800 p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">New purchase request</h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose the requesting office and say what it is for. Items are added when it is encoded.</p>
+                    <div className="mt-5 space-y-4">
+                        <div>
+                            <label htmlFor="pr-dept" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-1">Requesting office</label>
+                            <select
+                                id="pr-dept"
+                                required
+                                value={createForm.requester_department}
+                                onChange={(e) => setCreateForm({...createForm, requester_department: e.target.value})}
+                                className={inputClass}
+                            >
+                                <option value="">Select an office…</option>
+                                {departments.map((dept) => <option key={dept} value={dept}>{dept}</option>)}
+                            </select>
+                            {createErrors.requester_department && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{createErrors.requester_department}</p>}
+                        </div>
+                        <div>
+                            <label htmlFor="pr-purpose" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-1">Purpose</label>
+                            <textarea
+                                id="pr-purpose"
+                                required
+                                rows={3}
+                                value={createForm.remarks_or_notes}
+                                onChange={(e) => setCreateForm({...createForm, remarks_or_notes: e.target.value})}
+                                placeholder="What this purchase is for…"
+                                className={inputClass}
+                            />
+                            {createErrors.remarks_or_notes && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{createErrors.remarks_or_notes}</p>}
+                        </div>
+                    </div>
+                    <div className="mt-6 flex justify-end gap-3">
+                        <button type="button" onClick={close} disabled={processing} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
                             Cancel
                         </button>
                         <button
-                            type="button"
-                            onClick={submitCreate}
-                            disabled={processing || !isCreateValid}
-                            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                            type="submit"
+                            disabled={processing || !createForm.requester_department.trim() || !createForm.remarks_or_notes.trim()}
+                            className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50"
                         >
-                            {processing ? 'Creating...' : 'Create Request'}
+                            {processing ? 'Creating…' : 'Create request'}
                         </button>
                     </div>
-                </div>
-            </div>)}
+                </form>
+            </Modal>
 
-        {/* Created PR Modal */}
-        {successModal.isOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                <div
-                    className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-sm w-full p-6 border border-gray-100 dark:border-gray-700 text-center">
-                    <div
-                        className="mx-auto w-10 h-10 rounded-full bg-green-50 dark:bg-green-500/10 flex items-center justify-center mb-3">
-                        <Check className="w-5 h-5 text-green-600 dark:text-green-400"/>
+            {/* The number the new request was given */}
+            <Modal show={created !== null} onClose={() => setCreated(null)} maxWidth="sm">
+                <div className="bg-white dark:bg-gray-800 p-6 text-center">
+                    <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-500/10">
+                        <Check className="h-5 w-5 text-emerald-600 dark:text-emerald-400"/>
                     </div>
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-                        Request Created
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                        This request has been assigned the number below.
-                    </p>
-
-                    <div className="flex items-center justify-center gap-2 mb-6">
-                        <span
-                            className="font-mono text-base font-semibold tracking-wide text-indigo-600 dark:text-indigo-400">
-                            {successModal.prNumber}
-                        </span>
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Request created</h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">It was given this number, and is open in the Drafts tab.</p>
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                        <span className="font-mono text-base font-semibold tracking-wide text-indigo-600 dark:text-indigo-400">{created?.pr_number}</span>
                         <button
                             type="button"
-                            onClick={() => navigator.clipboard?.writeText(successModal.prNumber)}
-                            className="text-[11px] px-2 py-1 rounded-md border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900/40 transition-colors"
+                            onClick={() => navigator.clipboard?.writeText(created?.pr_number ?? '')}
+                            aria-label="Copy the PR number"
+                            className="rounded-md border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-900/40"
                         >
-                            Copy
+                            <Copy className="h-3.5 w-3.5"/>
                         </button>
                     </div>
-
-                    <button
-                        type="button"
-                        onClick={() => setSuccessModal({isOpen: false, prNumber: '', id: null})}
-                        className="w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                    >
+                    <button type="button" onClick={() => setCreated(null)} className="mt-6 w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
                         Done
                     </button>
                 </div>
-            </div>)}
-
-        {/* Decline Reason Modal */}
-        {declineModal.isOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                <div
-                    className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6 border border-gray-100 dark:border-gray-700">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-                        Decline Purchase Request
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                        Are you sure you want to decline {selected?.pr_number || 'this request'}? Please provide a
-                        reason below.
-                    </p>
-
-                    <div className="space-y-2 mb-6">
-                        <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-1">
-                            Reason for Decline:
-                        </label>
-                        <textarea
-                            required
-                            rows={3}
-                            autoFocus
-                            placeholder="Explain why this purchase request is being declined..."
-                            value={declineModal.reason}
-                            onChange={(e) => setDeclineModal(prev => ({...prev, reason: e.target.value}))}
-                            className="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-red-500 focus:ring-red-500"
-                        />
-                    </div>
-
-                    <div className="flex justify-end gap-3">
-                        <button
-                            type="button"
-                            onClick={closeDeclineModal}
-                            disabled={processing}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={submitDecline}
-                            disabled={processing || !declineModal.reason.trim()}
-                            className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
-                        >
-                            {processing ? 'Declining...' : 'Confirm Decline'}
-                        </button>
-                    </div>
-                </div>
-            </div>)}
-
-        {/*Approve PR Modal*/}
-        {approveModal.isOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                <div
-                    className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6 border border-gray-100 dark:border-gray-700">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-                        Accept Purchase Request
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                        Are you sure you want to accept {selected?.pr_number || 'this request'}?
-                        This will mark the request as verified and move it forward for approval.
-                    </p>
-
-                    <div className="flex justify-end gap-3">
-                        <button
-                            type="button"
-                            onClick={closeApproveModal}
-                            disabled={processing}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleApprove}
-                            disabled={processing}
-                            className="px-4 py-2 text-sm font-medium text-white bg-blue-700 rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                        >
-                            {processing ? 'Accepting...' : 'Confirm Accept'}
-                        </button>
-                    </div>
-                </div>
-            </div>)}
-    </AuthenticatedLayout>);
+            </Modal>
+        </AuthenticatedLayout>
+    );
 }

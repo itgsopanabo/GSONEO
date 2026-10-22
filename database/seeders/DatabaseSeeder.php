@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             DepartmentSeeder::class,
             RoleSeeder::class,
+            PermissionSeeder::class,
             StatusSeeder::class,
 //            PurchaseRequestSeeder::class,
         ]);
@@ -30,7 +31,7 @@ class DatabaseSeeder extends Seeder
             'emp_lname' => 'Doe',
             'emp_id' => '32165',
             'password' => Hash::make('password123'),
-            'role_id' => 1, // Set explicitly to 1
+            'role_id' => 4, // Set explicitly to 1
         ]);
 
         User::create([
@@ -38,7 +39,7 @@ class DatabaseSeeder extends Seeder
             'emp_lname' => 'Mary',
             'emp_id' => '6598',
             'password' => Hash::make('mariecris'),
-            'role_id' => 4, // Set explicitly to 1
+            'role_id' => 7, // Set explicitly to 1
         ]);
 
         User::create([

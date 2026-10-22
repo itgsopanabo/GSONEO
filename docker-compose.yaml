@@ -31,9 +31,13 @@ services:
     image: mysql:8.0
     container_name: laravel-db
     restart: unless-stopped
+    # Philippine time, so NOW(), the mysql CLI and any other client agree with
+    # the application (which sets its own session zone via DB_TIMEZONE).
+    command: --default-time-zone=+08:00
     ports:
       - "3306:3306"
     environment:
+      TZ: Asia/Manila
       MYSQL_DATABASE: GSONEO
       MYSQL_USER: laravel_user
       MYSQL_PASSWORD: secret

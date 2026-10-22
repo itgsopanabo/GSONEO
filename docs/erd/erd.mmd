@@ -1,0 +1,198 @@
+erDiagram
+    audit_log {
+        bigint id PK
+        bigint user_id "nullable"
+        varchar action
+        varchar auditable_type "nullable"
+        varchar auditable_id "nullable"
+        varchar description "nullable"
+        json old_values "nullable"
+        json new_values "nullable"
+        varchar ip_address "nullable"
+        varchar user_agent "nullable"
+        timestamp created_at
+    }
+    canvasForms {
+        bigint id PK
+        varchar CF_Number
+        varchar pr_number
+        varchar CF_to_be_Open
+        varchar CF_delivery_Period
+        varchar CF_canvasser "nullable"
+        varchar CF_made_by
+        varchar CF_bac_date
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    departments {
+        bigint id PK
+        varchar Department_Name UK
+        varchar Department_Code UK
+        varchar Department_Desc "nullable"
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    iar {
+        bigint id PK
+        varchar iar_number
+        varchar invoice_number "nullable"
+        varchar PO_Number FK
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    items {
+        bigint id PK
+        varchar item_desc UK
+        decimal item_price
+        varchar item_unit
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    permission_role {
+        bigint role_id PK, FK
+        bigint permission_id PK, FK
+    }
+    permissions {
+        bigint id PK
+        varchar name UK
+        varchar label
+        varchar group
+        varchar description "nullable"
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    purchase_order {
+        bigint id PK
+        varchar PO_Number UK "nullable"
+        varchar PO_Supplier "nullable"
+        datetime PO_Date "nullable"
+        varchar PR_Number FK, UK
+        int poNumbered_by FK "nullable"
+        varchar RIS_Number "nullable"
+        datetime RIS_Date "nullable"
+        int risNumbered_by FK "nullable"
+        varchar SSMI_Number "nullable"
+        datetime SSMI_Date "nullable"
+        datetime released_at "nullable"
+        int released_by_emp_id FK "nullable"
+        varchar released_to "nullable"
+        varchar released_to_department "nullable"
+        text release_remarks "nullable"
+        int ssmiNumbered_by "nullable"
+        int status FK
+        int cancelled_by_emp_id FK "nullable"
+        datetime cancelled_at "nullable"
+        text cancellation_reason "nullable"
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    purchase_request_items {
+        bigint id PK
+        bigint purchase_request_id FK
+        varchar item_name "nullable"
+        varchar item_desc "nullable"
+        varchar unit
+        int quantity
+        decimal estimated_unit_cost
+        decimal total_estimated_cost
+        decimal bidding_unit_cost "nullable"
+        decimal total_bidding_unit_cost "nullable"
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    purchase_requests {
+        bigint id PK
+        varchar pr_number UK
+        text requester_department
+        text mode_of_procurement "nullable"
+        text remarks_or_notes "nullable"
+        text reason_to_decline "nullable"
+        text cancellation_reason "nullable"
+        int verify_by_emp_id FK "nullable"
+        int encoded_by "nullable"
+        int decline_by_emp_id "nullable"
+        int cancelled_by_emp_id FK "nullable"
+        int status FK
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+        datetime verified_At "nullable"
+        datetime encoded_at "nullable"
+        datetime declined_At "nullable"
+        datetime cancelled_at "nullable"
+    }
+    record_classes {
+        bigint id PK
+        varchar code UK
+        varchar title
+        text description "nullable"
+        varchar rds_source
+        varchar rds_item_no
+        smallint retention_years "nullable"
+        varchar retention_trigger
+        tinyint is_permanent
+        tinyint is_vital
+        varchar sensitivity
+        tinyint is_active
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    records {
+        bigint id PK
+        bigint record_class_id FK
+        varchar title
+        varchar reference_no "nullable"
+        date record_date
+        varchar originating_office
+        varchar custodian
+        varchar physical_location
+        varchar box_no "nullable"
+        date retention_starts_on "nullable"
+        date eligible_for_disposal_on "nullable"
+        varchar status
+        timestamp archived_at "nullable"
+        varchar archived_by "nullable"
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    role {
+        bigint id PK
+        varchar role_name
+        varchar section
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    status {
+        bigint id PK
+        int status_code UK
+        varchar status_desc
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    users {
+        bigint id PK
+        int emp_id UK
+        varchar emp_fname
+        varchar emp_lname
+        bigint role_id FK
+        bigint status_id FK
+        varchar password
+        varchar remember_token "nullable"
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    purchase_order ||--o{ iar : "PO_Number"
+    permissions ||--o{ permission_role : "permission_id"
+    role ||--o{ permission_role : "role_id"
+    users |o--o{ purchase_order : "cancelled_by_emp_id"
+    users |o--o{ purchase_order : "poNumbered_by"
+    purchase_requests ||--o| purchase_order : "PR_Number"
+    users |o--o{ purchase_order : "released_by_emp_id"
+    users |o--o{ purchase_order : "risNumbered_by"
+    status ||--o{ purchase_order : "status"
+    purchase_requests ||--o{ purchase_request_items : "purchase_request_id"
+    users |o--o{ purchase_requests : "cancelled_by_emp_id"
+    status ||--o{ purchase_requests : "status"
+    users |o--o{ purchase_requests : "verify_by_emp_id"
+    record_classes ||--o{ records : "record_class_id"
+    role ||--o{ users : "role_id"
+    status ||--o{ users : "status_id"

@@ -22,4 +22,10 @@ return [
      */
     'selectable_status_codes' => [900, 901, 902],
 
+    /*
+     * The shared starting password handed to new or reset accounts. Anyone
+     * signed in with it must choose their own before they can change anything.
+     */
+    'default_password' => env('USER_DEFAULT_PASSWORD', 'gso123'),
+
 ];

@@ -2,10 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\LogsAudit;
+use App\Models\SavedQuery;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -21,6 +26,8 @@ use Throwable;
  */
 class SqlConsoleController extends Controller
 {
+    use LogsAudit;
+
     private const CONNECTION = 'mysql_readonly';
 
     private const ROW_LIMIT = 1000;
@@ -64,7 +71,12 @@ class SqlConsoleController extends Controller
     {
         $this->authorizeConsole($request);
 
-        $sql = trim((string) $request->input('sql', ''));
+        // ?saved=ID runs a saved query, so a report can be bookmarked.
+        $saved = $request->filled('saved')
+            ? SavedQuery::visibleTo($request->user())->findOrFail($request->integer('saved'))
+            : null;
+
+        $sql = $saved ? $saved->sql : trim((string) $request->input('sql', ''));
         $result = null;
         $error = null;
 
@@ -74,9 +86,10 @@ class SqlConsoleController extends Controller
                 $result = $this->execute($sql, $request->input('export') === 'csv');
 
                 $this->record($sql, $result['count']);
+                $saved?->forceFill(['run_count' => $saved->run_count + 1, 'last_run_at' => now()])->saveQuietly();
 
                 if ($request->input('export') === 'csv') {
-                    return $this->csv($result);
+                    return $this->csv($result, $saved?->name);
                 }
             } catch (Throwable $e) {
                 $error = $e->getMessage();
@@ -85,6 +98,8 @@ class SqlConsoleController extends Controller
         }
 
         return Inertia::render('CustomReport/SqlConsole', [
+            'savedQueries' => $this->savedQueriesFor($request->user()),
+            'loadedQuery' => $saved?->only(['id', 'name']),
             'sql'         => $sql,
             'headers'     => $result['headers'] ?? [],
             'rows'        => $result['rows'] ?? [],
@@ -99,6 +114,101 @@ class SqlConsoleController extends Controller
     }
 
     // ------------------------------------------------------------------
+    // Saved queries
+    // ------------------------------------------------------------------
+
+    public function storeSaved(Request $request): RedirectResponse
+    {
+        $this->authorizeConsole($request);
+        $data = $this->validatedSaved($request);
+
+        $saved = SavedQuery::create($data + ['created_by_emp_id' => $request->user()->emp_id]);
+
+        $this->audit('Saved query added', $saved, "Saved the SQL console query \"{$saved->name}\"".($saved->is_shared ? ', shared' : '').'.', null, $saved->only(['name', 'sql', 'is_shared']));
+
+        return redirect()
+            ->route('sql-console.index', ['saved' => $saved->id])
+            ->with('success', "\"{$saved->name}\" saved.");
+    }
+
+    public function updateSaved(Request $request, SavedQuery $savedQuery): RedirectResponse
+    {
+        $this->authorizeConsole($request);
+        abort_unless($savedQuery->ownedBy($request->user()), 403, 'Only the person who saved this query can change it.');
+
+        $before = $savedQuery->only(['name', 'description', 'sql', 'is_shared']);
+        $savedQuery->update($this->validatedSaved($request, $savedQuery));
+
+        $this->audit('Saved query updated', $savedQuery, "Updated the saved SQL console query \"{$savedQuery->name}\".", $before, $savedQuery->only(['name', 'description', 'sql', 'is_shared']));
+
+        return redirect()
+            ->route('sql-console.index', ['saved' => $savedQuery->id])
+            ->with('success', "\"{$savedQuery->name}\" updated.");
+    }
+
+    public function destroySaved(Request $request, SavedQuery $savedQuery): RedirectResponse
+    {
+        $this->authorizeConsole($request);
+        abort_unless($savedQuery->ownedBy($request->user()), 403, 'Only the person who saved this query can delete it.');
+
+        $before = $savedQuery->only(['name', 'sql', 'is_shared']);
+        $name = $savedQuery->name;
+        $savedQuery->delete();
+
+        $this->audit('Saved query deleted', $savedQuery, "Deleted the saved SQL console query \"{$name}\".", $before);
+
+        return redirect()->route('sql-console.index')->with('success', "\"{$name}\" deleted.");
+    }
+
+    /**
+     * The SQL goes through the same check as running it, so a saved query is
+     * always one the console will run.
+     */
+    private function validatedSaved(Request $request, ?SavedQuery $existing = null): array
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120', Rule::unique('saved_queries', 'name')
+                ->where('created_by_emp_id', $request->user()->emp_id)
+                ->ignore($existing)],
+            'description' => ['nullable', 'string', 'max:255'],
+            'sql' => ['required', 'string', 'max:20000'],
+            'is_shared' => ['boolean'],
+        ], [
+            'name.unique' => 'You already have a saved query with this name.',
+        ]);
+
+        try {
+            $this->guard(trim($data['sql']));
+        } catch (\RuntimeException $e) {
+            throw ValidationException::withMessages(['sql' => $e->getMessage()]);
+        }
+
+        return ['sql' => trim($data['sql']), 'is_shared' => (bool) ($data['is_shared'] ?? false)] + $data;
+    }
+
+    /** This person's own queries first, then what others have shared. */
+    private function savedQueriesFor($user): array
+    {
+        return SavedQuery::visibleTo($user)
+            ->with('owner:emp_id,emp_fname,emp_lname')
+            ->orderByRaw('created_by_emp_id = ? DESC', [$user?->emp_id])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (SavedQuery $q) => [
+                'id' => $q->id,
+                'name' => $q->name,
+                'description' => $q->description,
+                'sql' => $q->sql,
+                'is_shared' => $q->is_shared,
+                'mine' => $q->ownedBy($user),
+                'owner' => $q->owner ? trim("{$q->owner->emp_fname} {$q->owner->emp_lname}") : null,
+                'run_count' => $q->run_count,
+                'last_run_at' => $q->last_run_at?->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    // ------------------------------------------------------------------
 
     /**
      * Console access is separate from ordinary admin access — anyone who can
@@ -107,7 +217,7 @@ class SqlConsoleController extends Controller
      */
     private function authorizeConsole(Request $request): void
     {
-        abort_unless($request->user()?->role_id === 1, 403, 'The SQL console is restricted.');
+        abort_unless($request->user()?->hasPermission('reports.sql'), 403, 'The SQL console is restricted.');
     }
 
     private function guard(string $sql): void
@@ -225,8 +335,11 @@ class SqlConsoleController extends Controller
         ]);
     }
 
-    private function csv(array $result): StreamedResponse
+    private function csv(array $result, ?string $name = null): StreamedResponse
     {
+        // A saved query downloads under its own name: "monthly-pos-2026-10-20-0930.csv".
+        $file = ($name ? \Illuminate\Support\Str::slug($name) : 'query').'-'.now()->format('Y-m-d-Hi').'.csv';
+
         return response()->streamDownload(function () use ($result) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
@@ -238,6 +351,6 @@ class SqlConsoleController extends Controller
             }
 
             fclose($out);
-        }, 'query-' . now()->format('Y-m-d-Hi') . '.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }, $file, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 }

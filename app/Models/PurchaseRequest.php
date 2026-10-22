@@ -19,7 +19,6 @@ class PurchaseRequest extends Model
 
     protected $fillable = [
         'pr_number',
-        'requester_name',
         'requester_department',
         'needed_by_date',
         'remarks_or_notes',
@@ -27,6 +26,9 @@ class PurchaseRequest extends Model
         'status',
         'decline_by_emp_id',
         'declined_At',
+        'cancelled_by_emp_id',
+        'cancelled_at',
+        'cancellation_reason',
         'verified_At',
         'reason_to_decline',
         'canvas_start_At',
@@ -43,9 +45,31 @@ class PurchaseRequest extends Model
         'encoded_at',
     ];
 
+    /** The trail identifies a request by its PR number, not its row id. */
+    public function getAuditKey(): string
+    {
+        return $this->pr_number;
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** Who verified, encoded and declined it — shown on the Purchase Requests page. */
+    public function verifiedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verify_by_emp_id', 'emp_id');
+    }
+
+    public function encoder(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'encoded_by', 'emp_id');
+    }
+
+    public function declinedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'decline_by_emp_id', 'emp_id');
     }
 
     public function items(): HasMany

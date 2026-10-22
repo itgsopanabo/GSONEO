@@ -3,6 +3,10 @@ import forms from '@tailwindcss/forms';
 
 /** @type {import('tailwindcss').Config} */
 export default {
+    // Light mode everywhere: `dark:` classes only apply under a `.dark` class,
+    // which the app never sets, so the device's dark setting is ignored.
+    darkMode: 'class',
+
     content: [
         './vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php',
         './storage/framework/views/*.php',

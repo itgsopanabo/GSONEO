@@ -252,15 +252,12 @@
                     </div>
 
                     <div class="sig sig-approver">
-                        <div class="sig-name">ENGR. RANDEL B. PANAYANGAN, ME.</div>
+                        <div class="sig-name">ENGR. RANDEL B. PANAYANGAN, RME, MPA</div>
                         <div class="sig-caption">CGDH-GSO</div>
                     </div>
                 </div>
 
-                <div class="guard">
-                    <div class="sig-blank"></div>
-                    <div class="sig-caption">GUARD ON DUTY</div>
-                </div>
+
 
             </div>
         </div>

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\LogsAudit;
-use App\Http\Requests\ItemRequest;
+use App\Http\Requests\itemRequest;
 use App\Models\items;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -67,7 +67,7 @@ class ItemsController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(ItemRequest $request)
+    public function store(itemRequest $request)
     {
         //  already validated by ItemRequest before we got here
         $data = $request->validated();
@@ -101,7 +101,7 @@ class ItemsController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(ItemRequest $request, items $item)
+    public function update(itemRequest $request, items $item)
     {
         //  already validated by ItemRequest before we got here
         $data = $request->validated();

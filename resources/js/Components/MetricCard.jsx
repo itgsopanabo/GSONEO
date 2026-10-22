@@ -1,5 +1,8 @@
+import InfoHint from '@/Components/InfoHint.jsx';
+
 export default function MetricCard({
                                        title, value, subValue, // Optional: inline secondary text (e.g., "Feels like 35°C")
+                                       info, // Optional: sentence behind the ⓘ saying what the number counts
                                        description, icon: Icon, trend, action, // Optional: React node/element (e.g., a button or link)
                                        loading = false, valueClassName = "", // Optional: override standard text styling
                                        className = ""
@@ -9,8 +12,9 @@ export default function MetricCard({
             <div>
                 {/* Header Row */}
                 <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+                    <p className="flex items-center gap-1.5 text-sm font-medium text-gray-400 uppercase tracking-wider">
                         {title}
+                        <InfoHint text={info} label={`What "${title}" counts`}/>
                     </p>
                     {Icon && (<div className="text-gray-400 dark:text-gray-500">
                             <Icon className="w-6 h-6"/>

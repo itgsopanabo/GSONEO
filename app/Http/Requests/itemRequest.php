@@ -6,7 +6,7 @@ use App\Models\items;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class ItemRequest extends FormRequest
+class itemRequest extends FormRequest
 {
     /**
      * Who is allowed to send this request.
@@ -24,9 +24,12 @@ class ItemRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        $desc = is_string($this->item_desc) ? trim($this->item_desc) : $this->item_desc;
+        $unit = is_string($this->item_unit) ? trim($this->item_unit) : $this->item_unit;
+
         $this->merge([
-            'item_desc' => is_string($this->item_desc) ? trim($this->item_desc) : $this->item_desc,
-            'item_unit' => is_string($this->item_unit) ? trim($this->item_unit) : $this->item_unit,
+            'item_desc' => $desc,
+            'item_unit' => $unit === '' ? null : $unit,
         ]);
     }
 
@@ -38,7 +41,7 @@ class ItemRequest extends FormRequest
         return [
             'item_desc'  => ['required', 'string', 'max:64', Rule::unique('items', 'item_desc')->ignore($this->item())],
             'item_unit'  => ['nullable', 'string', 'max:2000'],
-            'item_price' => ['required', 'numeric', 'min:0'],
+            'item_price' => ['required', 'numeric', 'min:0.01'],
         ];
     }
 
@@ -61,6 +64,7 @@ class ItemRequest extends FormRequest
     {
         return [
             'item_desc.unique' => 'An item with this description already exists.',
+            'item_price.min'   => 'Price must be greater than ₱0.00.',
         ];
     }
 

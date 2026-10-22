@@ -35,6 +35,9 @@ class StatusSeeder extends Seeder
 
             ['status_code' => 700, 'status_desc' => 'Rejected', 'created_at' => now(), 'updated_at' => now()],
 
+            // Cancelled by an administrator — see App\Services\ProcurementCancellation.
+            ['status_code' => 800, 'status_desc' => 'Cancelled', 'created_at' => now(), 'updated_at' => now()],
+
             // Account State
             ['status_code' => 900, 'status_desc' => 'Active', 'created_at' => now(), 'updated_at' => now()],
             ['status_code' => 901, 'status_desc' => 'Inactive', 'created_at' => now(), 'updated_at' => now()],

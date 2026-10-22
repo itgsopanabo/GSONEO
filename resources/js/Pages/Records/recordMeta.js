@@ -4,6 +4,8 @@
 // One file so the table badge, the detail banner and the form preview
 // can never disagree with each other.
 
+import { formatDate } from '@/Utils/formatDate.js';
+
 export const SENSITIVITY = {
     public: {
         label: 'Public',
@@ -81,13 +83,12 @@ export function retentionState(record) {
 
     return {
         label: `Eligible ${year}`,
-        detail: due.toLocaleDateString(undefined, { dateStyle: 'medium' }),
+        detail: formatDate(due),
         tone: 'text-gray-700 bg-white ring-gray-300 dark:text-gray-300 dark:bg-gray-800 dark:ring-gray-600',
     };
 }
 
-export const formatDate = (value) =>
-    value ? new Date(value).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—';
+export { formatDate };
 
 /** Client-side mirror of Record::computeDisposalDate(), for the form preview. */
 export function previewDisposal(cls, retentionStartsOn) {

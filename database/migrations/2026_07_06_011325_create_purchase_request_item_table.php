@@ -18,7 +18,7 @@ return new class extends Migration
                 ->constrained('purchase_requests')
                 ->onDelete('cascade');
 
-            $table->string('item_name');
+            $table->string('item_name')->nullable();
             $table->string('item_desc')->nullable();
             $table->string('unit');
             $table->integer('quantity');

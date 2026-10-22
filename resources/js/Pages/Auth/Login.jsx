@@ -34,7 +34,7 @@ function Field({ label, htmlFor, invalid = false, children }) {
     );
 }
 
-export default function Login({ status, canResetPassword, canRegister }) {
+export default function Login({ status, canResetPassword }) {
     const { data, setData, post, processing, errors, clearErrors, reset } = useForm({
         empID: '',
         password: '',
@@ -222,17 +222,9 @@ export default function Login({ status, canResetPassword, canRegister }) {
                 </button>
             </form>
 
-            {canRegister && (
-                <p className="mt-8 border-t border-[#E2E6E4] pt-6 text-center text-[13px] text-[#5A6570] dark:border-zinc-800 dark:text-zinc-400">
-                    No account yet?{' '}
-                    <Link
-                        href={route('register')}
-                        className="font-medium text-[#1D6F63] hover:underline dark:text-[#4FB3A2]"
-                    >
-                        Create an employee account
-                    </Link>
-                </p>
-            )}
+            <p className="mt-8 border-t border-[#E2E6E4] pt-6 text-center text-[13px] text-[#5A6570] dark:border-zinc-800 dark:text-zinc-400">
+                No account yet? Ask your system administrator to add you.
+            </p>
         </GuestLayout>
     );
 }

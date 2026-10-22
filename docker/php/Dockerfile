@@ -17,7 +17,10 @@ COPY composer.* ./
 RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
 
 # --- Stage 3: Final Production Image ---
-FROM php:8.3-fpm
+# Pinned to a patch release, matching the PHP on the development PCs: 8.5.12
+# fixes php2shell (CVE-2026-109618, CVE-2026-109619). Raise it with each PHP
+# security release.
+FROM php:8.5.12-fpm
 WORKDIR /var/www
 
 # Install system dependencies

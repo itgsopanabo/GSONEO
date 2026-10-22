@@ -3,6 +3,8 @@ import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.jsx";
 import {STATUS_MAP} from '@/Constants/statusConfig.js';
 import {useEffect, useMemo, useState} from "react";
 import {PanelRightClose, PanelRightOpen, Search} from "lucide-react";
+import DateInput from "@/Components/DateInput.jsx";
+import {formatDate} from "@/Utils/formatDate.js";
 
 /**
  * NOTE ON TOTALS
@@ -14,6 +16,9 @@ import {PanelRightClose, PanelRightOpen, Search} from "lucide-react";
  * multiplication. If it's actually a unit price, change `lineTotal` to
  * `quantity * total_estimated_cost` and every figure on the page follows.
  */
+
+// Saved in CF_to_be_Open instead of a date when the canvass opens as soon as possible.
+const OPEN_ASAP = 'ASAP';
 
 function formatRelativeTime(dateString) {
     if (!dateString) return '';
@@ -27,7 +32,7 @@ function formatRelativeTime(dateString) {
     const diffDays = Math.floor(diffHours / 24);
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return formatDate(date);
 }
 
 function formatCurrency(value) {
@@ -56,8 +61,9 @@ export default function Index({purchaseRequests}) {
 
 
     const [canvasModal, setCanvasModal] = useState({
-        isOpen: false, mode: 'create', canvasId: null, opened_on: '', delivery_period: '', bac_date: '',
+        isOpen: false, mode: 'create', canvasId: null, opened_on: '', open_asap: false, delivery_period: '', bac_date: '',
     });
+    const hasOpeningSchedule = canvasModal.open_asap || Boolean(canvasModal.opened_on);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -83,7 +89,7 @@ export default function Index({purchaseRequests}) {
     const filteredRequests = useMemo(() => {
         if (!search.trim()) return requests;
         const q = search.trim().toLowerCase();
-        return requests.filter(pr => pr.pr_number?.toLowerCase().includes(q) || pr.requester_name?.toLowerCase().includes(q) || pr.requester_department?.toLowerCase().includes(q));
+        return requests.filter(pr => pr.pr_number?.toLowerCase().includes(q) || pr.requester_department?.toLowerCase().includes(q));
     }, [requests, search]);
 
     const pendingCount = useMemo(() => requests.filter(pr => pr.status === 200).length, [requests]);
@@ -101,11 +107,14 @@ export default function Index({purchaseRequests}) {
 
     function openCanvasModal(mode = 'create', canvas = null) {
         if (!selected) return;
+        const savedOpening = mode === 'reprint' ? canvas?.CF_to_be_Open || '' : '';
+        const savedAsap = savedOpening === OPEN_ASAP;
         setCanvasModal({
             isOpen: true,
             mode,
             canvasId: canvas?.id ?? null,
-            opened_on: mode === 'reprint' ? canvas?.CF_to_be_Open || '' : '',
+            opened_on: savedAsap ? '' : savedOpening,
+            open_asap: savedAsap,
             delivery_period: mode === 'reprint' ? canvas?.CF_delivery_Period || '' : '',
             bac_date: mode === 'reprint' ? canvas?.CF_bac_date || '' : '',
         });
@@ -113,15 +122,15 @@ export default function Index({purchaseRequests}) {
 
     function closeCanvasModal() {
         setCanvasModal({
-            isOpen: false, mode: 'create', canvasId: null, opened_on: '', delivery_period: '', bac_date: '',
+            isOpen: false, mode: 'create', canvasId: null, opened_on: '', open_asap: false, delivery_period: '', bac_date: '',
         });
     }
 
     function submitPrintCanvas() {
-        if (!selected || !canvasModal.opened_on) return;
+        if (!selected || !hasOpeningSchedule) return;
 
         const canvasPayload = {
-            opened_on: canvasModal.opened_on,
+            opened_on: canvasModal.open_asap ? OPEN_ASAP : canvasModal.opened_on,
             delivery_period: canvasModal.delivery_period,
             bac_date: canvasModal.bac_date,
         };
@@ -249,7 +258,7 @@ export default function Index({purchaseRequests}) {
                                     </span>
                                 </div>
                                 <p className="text-xs font-medium text-gray-900 dark:text-white truncate">
-                                    {pr.requester_name || 'Untitled request'}
+                                    {pr.requester_department || 'No department'}
                                 </p>
                                 <div className="mt-1.5 flex items-center gap-2">
                                     {pr.items != null && (<span
@@ -323,15 +332,7 @@ export default function Index({purchaseRequests}) {
                                     Request Summary
                                 </p>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                                    <div>
-                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                                            Requester
-                                        </p>
-                                        <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                            {selected.requester_name || '—'}
-                                        </p>
-                                    </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                                     <div>
                                         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
                                             Department
@@ -345,9 +346,7 @@ export default function Index({purchaseRequests}) {
                                             Date Created
                                         </p>
                                         <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                            {selected.created_at ? new Date(selected.created_at).toLocaleDateString(undefined, {
-                                                year: 'numeric', month: 'short', day: 'numeric',
-                                            }) : '—'}
+                                            {formatDate(selected.created_at)}
                                         </p>
                                     </div>
                                 </div>
@@ -381,7 +380,7 @@ export default function Index({purchaseRequests}) {
                                                         {canvas.CF_Number}
                                                     </p>
                                                     <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                                                        Open: {canvas.CF_to_be_Open || '—'} · Created: {canvas.created_at ? new Date(canvas.created_at).toLocaleDateString() : '—'}
+                                                        Open: {formatDate(canvas.CF_to_be_Open, canvas.CF_to_be_Open || '—')} · Created: {formatDate(canvas.created_at)}
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-2">
@@ -434,7 +433,7 @@ export default function Index({purchaseRequests}) {
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700/40">
                                     {items.map((item, idx) => (<tr key={item.id ?? idx}>
                                         <td className="px-5 py-3 text-xs text-gray-700 dark:text-gray-300">
-                                            {item.item_name}
+                                            {item.item_desc}
                                         </td>
                                         <td className="px-5 py-3 text-xs text-gray-700 dark:text-gray-300 text-right">
                                             {item.quantity} {item.unit || ''}
@@ -507,18 +506,48 @@ export default function Index({purchaseRequests}) {
 
 
                         <div>
-                            <label
-                                className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-1">
-                                To Be Opened On <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                                type="date"
-                                required
-                                autoFocus
-                                value={canvasModal.opened_on}
-                                onChange={(e) => setCanvasModal(prev => ({...prev, opened_on: e.target.value}))}
-                                className="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                            />
+                            <div className="flex items-center justify-between gap-3 mb-1">
+                                <span
+                                    id="opened-on-label"
+                                    className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">
+                                    To Be Opened On <span className="text-red-500">*</span>
+                                </span>
+                                <div
+                                    role="radiogroup"
+                                    aria-labelledby="opened-on-label"
+                                    className="inline-flex rounded-lg border border-gray-200 dark:border-gray-600 p-0.5 text-[11px] font-medium"
+                                >
+                                    {[{asap: false, label: 'Specific date'}, {asap: true, label: 'ASAP'}].map((option) => {
+                                        const active = canvasModal.open_asap === option.asap;
+                                        return (
+                                            <button
+                                                key={option.label}
+                                                type="button"
+                                                role="radio"
+                                                aria-checked={active}
+                                                onClick={() => setCanvasModal(prev => ({...prev, open_asap: option.asap}))}
+                                                className={`px-2.5 py-1 rounded-md transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            {canvasModal.open_asap ? (
+                                <div
+                                    className="w-full rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm text-gray-700 dark:text-gray-200">
+                                    ASAP <span className="text-gray-400">· prints as “ASAP” on the canvass form</span>
+                                </div>
+                            ) : (
+                                <DateInput
+                                    required
+                                    autoFocus
+                                    aria-labelledby="opened-on-label"
+                                    value={canvasModal.opened_on}
+                                    onChange={(e) => setCanvasModal(prev => ({...prev, opened_on: e.target.value}))}
+                                />
+                            )}
                         </div>
 
                         <div>
@@ -540,11 +569,9 @@ export default function Index({purchaseRequests}) {
                                 className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-1">
                                 BAC Date
                             </label>
-                            <input
-                                type="date"
+                            <DateInput
                                 value={canvasModal.bac_date}
                                 onChange={(e) => setCanvasModal(prev => ({...prev, bac_date: e.target.value}))}
-                                className="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                             />
                         </div>
                     </div>
@@ -560,7 +587,7 @@ export default function Index({purchaseRequests}) {
                         <button
                             type="button"
                             onClick={submitPrintCanvas}
-                            disabled={!canvasModal.opened_on}
+                            disabled={!hasOpeningSchedule}
                             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
                         >
                             {canvasModal.mode === 'reprint' ? 'Update & Reprint' : 'Print Canvas'}

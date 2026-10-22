@@ -24,7 +24,6 @@ class PurchaseRequestFactory extends Factory
     {
         return [
             'pr_number' => fake()->unique()->bothify('PR-####'),
-            'requester_name' => fake()->name(),
             'requester_department' => fake()->randomElement(['IT', 'HR', 'Operations', 'Finance']),
             'needed_by_date' => fake()->dateTimeBetween('now', '+1 month'),
         ];

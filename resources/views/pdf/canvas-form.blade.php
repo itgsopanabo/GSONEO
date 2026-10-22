@@ -16,7 +16,7 @@
         /* ===== Global Print Area Definition ===== */
         @page {
             size: legal;
-            margin: 0.5in !important; /* Strict 0.5-inch border on all sides of EVERY page */
+            margin: 0.5in !important; /* Strict 0.5-inch border on all sides of EVERY page; the branding footer may deepen the bottom one */
         }
 
         /* ===== Base Reset ===== */
@@ -53,46 +53,9 @@
             break-before: avoid !important;
         }
 
-        /* ===== Header Layout ===== */
-        .header-table {
-            width: 100%;
-            border-bottom: 2px solid #000000;
+        /* ===== Header Layout: the shared letterhead ===== */
+        .canvas-letterhead {
             margin-bottom: 12px;
-            padding-bottom: 6px;
-        }
-
-        .header-logo {
-            width: 70px;
-            text-align: center;
-        }
-
-        .header-logo img {
-            width: 55px;
-            height: auto;
-        }
-
-        .header-text {
-            text-align: center;
-            line-height: 1.2;
-        }
-
-        .header-text p {
-            margin: 0;
-            font-size: 11px;
-            font-style: italic;
-        }
-
-        .office-title {
-            font-size: 14px;
-            font-weight: bold;
-            text-transform: uppercase;
-            margin: 4px 0 0 0;
-        }
-
-        .service-motto {
-            font-size: 9px;
-            font-style: italic;
-            text-align: right;
         }
 
         /* ===== Metadata Blocks ===== */
@@ -235,34 +198,19 @@
             }
         }
     </style>
+    @include('pdf.partials.branding-styles', ['pageBottom' => 48])
 
 </head>
 <body>
+@include('pdf.partials.foreground')
+@php $sig = $signatories['canvass_form']['slots']; @endphp
 
+{{-- Wrapped so the first sheet stays :first-child after the footer and watermark. --}}
+<div>
 @foreach($documents as $form)
     <div class="canvas-sheet">
 
-        <table class="header-table">
-            <tr>
-                <td class="header-logo">
-                    @if(file_exists(public_path('images/doh-logo.png')))
-                        <img src="{{ public_path('images/doh-logo.png') }}" alt="Logo">
-                    @endif
-                </td>
-                <td class="header-text">
-                    <p>Republic of the Philippines</p>
-                    <p>Province of Davao del Norte</p>
-                    <p>Panabo City</p>
-                    <div class="office-title">Office of the General Services</div>
-                </td>
-                <td class="header-logo">
-                    @if(file_exists(public_path('images/center-logo.png')))
-                        <img src="{{ public_path('images/center-logo.png') }}" alt="Logo">
-                    @endif
-                    <div class="service-motto">Service to Panaboños<br>Service to God</div>
-                </td>
-            </tr>
-        </table>
+        @include('pdf.partials.letterhead', ['class' => 'canvas-letterhead'])
 
         <div class="meta-block">
             <table>
@@ -340,9 +288,8 @@
                     <td class="qty" style="text-align: center;">{{ $item->quantity ?? 0 }}</td>
                     <td class="unit" style="text-align: center;">{{ $item->unit ?? 'pc' }}</td>
                     <td>
-                        <strong style="text-transform: uppercase;">{{ $item->item_name ?? 'Unspecified Item' }}</strong>
                         @if(!empty($item->item_desc))
-                            <br><span
+                            <span
                                 style="font-size: 10px; line-height: 1.3; display: block; margin-top: 2px;">{{ $item->item_desc }}</span>
                         @endif
                     </td>
@@ -390,8 +337,8 @@
                 </td>
                 <td style="text-align: left;">
                     Very truly yours,
-                    <div class="signatory-name">ENGR. RANDEL B. PANAYANGAN</div>
-                    <div class="signatory-title">CGDH-CGSO</div>
+                    <div class="signatory-name">@if(filled($sig['signatory']['name'])){{ $sig['signatory']['name'] }}@else<span class="sig-line">&nbsp;</span>@endif</div>
+                    <div class="signatory-title">{{ $sig['signatory']['position'] }}</div>
                     <div class="bac-date">
                         BAC Date: <u>{{ \Carbon\Carbon::parse($form->CF_bac_date)->format('F d, Y') }}</u>
                     </div>
@@ -401,6 +348,7 @@
 
     </div>
 @endforeach
+</div>
 
 <script>
     // Trigger the print dialog once the page has finished rendering.

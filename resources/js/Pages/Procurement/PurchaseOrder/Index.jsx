@@ -1,5 +1,6 @@
 import {Head, Link, router, usePage} from '@inertiajs/react';
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.jsx";
+import {formatDate} from "@/Utils/formatDate.js";
 import {STATUS_MAP} from '@/Constants/statusConfig.js';
 import {useEffect, useMemo, useState} from "react";
 import {Search, PanelRightClose, PanelRightOpen} from "lucide-react";
@@ -11,8 +12,8 @@ import {Search, PanelRightClose, PanelRightOpen} from "lucide-react";
  * `purchase_order` table, each carrying its parent purchase request as a
  * relation.
  *
- * That table uses PascalCase columns (`PO_Number`, `PO_Supplier`, `PR_Number`,
- * `supplier_receive_date`), and Laravel serializes attribute names verbatim —
+ * That table uses PascalCase columns (`PO_Number`, `PO_Supplier`, `PR_Number`),
+ * and Laravel serializes attribute names verbatim —
  * so the payload keys are PascalCase too, not snake_case. The lowercase
  * fallbacks below exist only in case an API resource renames them later.
  *
@@ -50,15 +51,15 @@ const QUEUE_COUNTERS = [{
     style: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300',
 },];
 
-const EMPTY_PO_FORM = {supplier: '', date_received: '', po_number_mode: 'auto', po_number: ''};
-const CLOSED_RESULT_MODAL = {isOpen: false, poNumber: null, supplier: null, dateReceived: null};
+const EMPTY_PO_FORM = {supplier: '', po_number_mode: 'auto', po_number: ''};
+const CLOSED_RESULT_MODAL = {isOpen: false, poNumber: null, supplier: null};
 
 // Default matches the PR page's arithmetic so totals agree across both pages.
 // If `total_estimated_cost` is already a line total, switch the two lines below
 // AND fix the PR page's grand total, which is currently over-counting.
 function lineTotal(item) {
-    return Number(item?.quantity ?? 0) * Number(item?.total_estimated_cost ?? 0);
-    // return Number(item?.total_estimated_cost ?? 0);
+    const num = Number(item?.total_estimated_cost);
+    return Number.isNaN(num) ? 0 : num;
 }
 
 /* ------------------------------------------------------------------ *
@@ -105,7 +106,7 @@ function formatRelativeTime(dateString) {
     const diffDays = Math.floor(diffHours / 24);
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return formatDate(date);
 }
 
 function formatCurrency(value) {
@@ -162,8 +163,6 @@ export default function Index({purchaseOrders}) {
                 pr_number: pr?.pr_number ?? item?.PR_Number ?? '—',
                 supplier: item?.PO_Supplier ?? null,
                 po_date: item?.PO_Date ?? null,
-                supplier_receive_date: item?.supplier_receive_date ?? null,
-                requester_name: pr?.requester_name ?? '',
                 requester_department: pr?.requester_department ?? '',
                 status: item?.status ?? pr?.status ?? 0,
                 created_at: item?.created_at ?? pr?.created_at ?? null,
@@ -189,7 +188,7 @@ export default function Index({purchaseOrders}) {
     const filteredOrders = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return orders;
-        return orders.filter((o) => [o.po_number, o.pr_number, o.requester_name, o.requester_department, o.supplier]
+        return orders.filter((o) => [o.po_number, o.pr_number, o.requester_department, o.supplier]
             .some((field) => String(field ?? '').toLowerCase().includes(q)));
     }, [orders, search]);
 
@@ -248,7 +247,7 @@ export default function Index({purchaseOrders}) {
                 const poNumber = extractPoNumber(page, selected.purchaseRequestId, selected.po_number);
 
                 if (poNumber) {
-                    setPoResultModal({isOpen: true, poNumber, supplier: null, dateReceived: null});
+                    setPoResultModal({isOpen: true, poNumber, supplier: null});
                 } else {
                     console.warn('[verifyPO] No po_number in response. Controller must flash po_number ' + 'or redirect back with a refreshed purchaseOrders payload.');
                 }
@@ -273,7 +272,7 @@ export default function Index({purchaseOrders}) {
         // Prefill from the row so re-running after a validation failure doesn't
         // make the user retype what the server already has.
         setPoForm({
-            ...EMPTY_PO_FORM, supplier: selected.supplier ?? '', date_received: selected.supplier_receive_date ?? '',
+            ...EMPTY_PO_FORM, supplier: selected.supplier ?? '',
         });
         setPoFormModal({isOpen: true});
     }
@@ -289,7 +288,7 @@ export default function Index({purchaseOrders}) {
         setProcessing(true);
 
         router.post(route(ROUTES.generatePONumber, {purchase_request: selected.purchaseRequestId}), {
-            supplier: poForm.supplier, date_received: poForm.date_received, po_number_mode: poForm.po_number_mode, // Only sent when the user types the number themselves. If the
+            supplier: poForm.supplier, po_number_mode: poForm.po_number_mode, // Only sent when the user types the number themselves. If the
 
             ...(poForm.po_number_mode === 'manual' ? {po_number: poForm.po_number} : {}),
         }, {
@@ -299,7 +298,7 @@ export default function Index({purchaseOrders}) {
 
                 if (poNumber) {
                     setPoResultModal({
-                        isOpen: true, poNumber, supplier: poForm.supplier, dateReceived: poForm.date_received,
+                        isOpen: true, poNumber, supplier: poForm.supplier,
                     });
                 } else {
                     console.warn('[generatePONumber] No po_number in response — check the controller redirect.');
@@ -367,7 +366,7 @@ export default function Index({purchaseOrders}) {
                                 type="text"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search PO / PR number, requester, supplier..."
+                                placeholder="Search PO / PR number, department, supplier..."
                                 className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400"
                             />
                         </div>
@@ -394,7 +393,7 @@ export default function Index({purchaseOrders}) {
                                     </span>
                                 </div>
                                 <p className="text-xs font-medium text-gray-900 dark:text-white truncate">
-                                    {po.requester_name || 'Unnamed requester'}
+                                    {po.requester_department || 'No department'}
                                 </p>
                                 <div className="mt-1.5 flex items-center gap-2">
                                     {po.items?.length > 0 && (<span
@@ -458,10 +457,6 @@ export default function Index({purchaseOrders}) {
                         <div
                             className="px-6 py-5 border-b border-gray-100 dark:border-gray-700/60 flex items-start justify-between">
                             <div>
-                                <div
-                                    className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 mb-1.5">
-                                    <span>Created by {selected.requester_name || 'N/A'}</span>
-                                </div>
                                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                                     {selected.po_number || selected.pr_number || 'Purchase Order'}
                                 </h2>
@@ -488,21 +483,13 @@ export default function Index({purchaseOrders}) {
                                         Request Summary
                                     </p>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                                         <div>
                                             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
                                                 PR Number
                                             </p>
                                             <p className="text-xs font-medium text-gray-900 dark:text-white font-mono">
                                                 {selected.pr_number || '—'}
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                                                Requester
-                                            </p>
-                                            <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                                {selected.requester_name || '—'}
                                             </p>
                                         </div>
                                         <div>
@@ -518,9 +505,7 @@ export default function Index({purchaseOrders}) {
                                                 Date Created
                                             </p>
                                             <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                                {selected.created_at ? new Date(selected.created_at).toLocaleDateString(undefined, {
-                                                    year: 'numeric', month: 'short', day: 'numeric',
-                                                }) : '—'}
+                                                {formatDate(selected.created_at)}
                                             </p>
                                         </div>
                                     </div>
@@ -541,7 +526,7 @@ export default function Index({purchaseOrders}) {
                                     <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
                                         Order Details
                                     </p>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                         <div>
                                             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
                                                 PO Number
@@ -563,15 +548,7 @@ export default function Index({purchaseOrders}) {
                                                 PO Date
                                             </p>
                                             <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                                {selected.po_date || '—'}
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                                                Date Received
-                                            </p>
-                                            <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                                {selected.supplier_receive_date || '—'}
+                                                {formatDate(selected.po_date)}
                                             </p>
                                         </div>
                                     </div>
@@ -606,7 +583,7 @@ export default function Index({purchaseOrders}) {
                                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700/40">
                                         {(selected.items || []).map((item, idx) => (<tr key={item.id ?? idx}>
                                             <td className="px-5 py-3 text-xs text-gray-700 dark:text-gray-300">
-                                                {item.item_name}
+                                                {item.item_desc}
                                             </td>
                                             <td className="px-5 py-3 text-xs text-gray-700 dark:text-gray-300 text-right">
                                                 {item.quantity} {item.unit || ''}
@@ -695,21 +672,6 @@ export default function Index({purchaseOrders}) {
                     <div>
                         <label
                             className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                            Supplier Date Received
-                        </label>
-                        <input
-                            type="date"
-                            value={poForm.date_received}
-                            onChange={(e) => setPoForm({...poForm, date_received: e.target.value})}
-                            className="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                        />
-                        {poErrors.date_received && (
-                            <p className="mt-1 text-[11px] text-red-600">{poErrors.date_received}</p>)}
-                    </div>
-
-                    <div>
-                        <label
-                            className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
                             PO Number Mode
                         </label>
                         <select
@@ -772,14 +734,10 @@ export default function Index({purchaseOrders}) {
                     {poResultModal.poNumber}
                 </p>
 
-                {(poResultModal.supplier || poResultModal.dateReceived) && (<div className="mt-4 space-y-1.5">
+                {poResultModal.supplier && (<div className="mt-4 space-y-1.5">
                     {poResultModal.supplier && (<p className="text-[11px] text-gray-500 dark:text-gray-400">
                         Supplier: <span
                         className="text-gray-900 dark:text-white">{poResultModal.supplier}</span>
-                    </p>)}
-                    {poResultModal.dateReceived && (<p className="text-[11px] text-gray-500 dark:text-gray-400">
-                        Supplier Date received: <span
-                        className="text-gray-900 dark:text-white">{poResultModal.dateReceived}</span>
                     </p>)}
                 </div>)}
 

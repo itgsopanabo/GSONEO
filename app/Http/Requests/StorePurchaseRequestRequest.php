@@ -14,8 +14,8 @@ class StorePurchaseRequestRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'requester_name' => ['required', 'string', 'max:255'],
-            'requester_department' => ['required', 'string', 'max:255'],
+            // One of the offices on the Requesting Offices screen.
+            'requester_department' => ['required', ...\App\Models\Departments::nameRule()],
             'remarks_or_notes' => ['required', 'string', 'max:2000'],
         ];
     }

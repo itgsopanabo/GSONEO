@@ -1,6 +1,7 @@
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.jsx";
 import { Head, Link } from '@inertiajs/react';
 import { useState } from 'react';
+import { formatDateTime } from '@/Utils/formatDate.js';
 
 export default function Index({ logs }) {
     const [selectedJson, setSelectedJson] = useState(null);
@@ -57,7 +58,7 @@ export default function Index({ logs }) {
                                         <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
                                             {/* Timestamp */}
                                             <td className="px-6 py-4 whitespace-nowrap text-slate-500 font-medium">
-                                                {new Date(log.created_at).toLocaleString()}
+                                                {formatDateTime(log.created_at, {seconds: true})}
                                             </td>
 
                                             {/* User Info */}

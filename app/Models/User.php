@@ -78,6 +78,22 @@ class User extends Authenticatable
         return $this->role && $this->role->role_name === $roleName;
     }
 
+    /** Permission names granted through this user's role. */
+    public function permissionNames(): array
+    {
+        return $this->role?->permissionNames() ?? [];
+    }
+
+    public function hasPermission(string $permission): bool
+    {
+        return in_array($permission, $this->permissionNames(), true);
+    }
+
+    public function hasAnyPermission(array $permissions): bool
+    {
+        return count(array_intersect($permissions, $this->permissionNames())) > 0;
+    }
+
     public function isAdmin(): bool
     {
         return $this->role_id === config('Users.sys_admin_role_id');

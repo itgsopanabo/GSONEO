@@ -2,6 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Controllers\MissingTrackerController;
+use App\Models\Departments;
+use App\Models\TrackerTag;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -33,15 +36,8 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $request->user(),
-                'can' => [
-                    'verify_pr' => $request->user() ? $request->user()->can('verify-pr') : false,
-                    'canvass' => $request->user() ? $request->user()->can('canvass') : false,
-                    'proceedPO' => $request->user() ? $request->user()->can('proceedPO') : false,
-                    'proceedIAR' => $request->user() ? $request->user()->can('proceedIAR') : false,
-                    'viewRecords' => $request->user()?->can('records.view') ?? false,
-                    'viewRestrictedRecords' => $request->user()?->can('records.view_restricted') ?? false,
-                    'manageRecordClasses' => $request->user()?->can('record_classes.manage') ?? false,
-                ],
+                // Permission names from the user's role; the menu reads these.
+                'permissions' => fn () => $request->user()?->permissionNames() ?? [],
             ],
             'flash' => [
                 'success' => fn() => $request->session()->get('success'),
@@ -50,6 +46,16 @@ class HandleInertiaRequests extends Middleware
                 'created_pr' => fn() => $request->session()->get('created_pr'),
             ],
             'csrf_token' => csrf_token(),
+            // The tags offered when marking an order as missing something. Only
+            // inventory staff tag orders, so nobody else is sent the list.
+            // The requesting offices every form offers, kept on the Requesting Offices screen.
+            'offices' => fn () => $request->user() ? Departments::options() : [],
+            'trackerTags' => fn () => $request->user()?->hasAnyPermission(MissingTrackerController::PERMISSIONS)
+                ? TrackerTag::options()
+                : [],
+            // True while the user is still on the shared default password; the
+            // layout then shows the "set up a new password" dialog.
+            'mustChangePassword' => fn () => RequirePasswordChange::isRequired($request),
         ];
     }
 }

@@ -15,7 +15,6 @@ return new class extends Migration {
             $table->id();
             $table->string('pr_number')->unique();
 
-            $table->text('requester_name');
             $table->text('requester_department');
             $table->text('mode_of_procurement')->nullable();
             $table->text('remarks_or_notes')->nullable();
@@ -28,9 +27,9 @@ return new class extends Migration {
 
             $table->unsignedInteger('status')->default(0);
             $table->timestamps();
-            $table->date('verified_At')->nullable();
-            $table->date('encoded_at')->nullable();
-            $table->date('declined_At')->nullable();
+            $table->dateTime('verified_At')->nullable();
+            $table->dateTime('encoded_at')->nullable();
+            $table->dateTime('declined_At')->nullable();
 
             // Foreign Key Constraints
             $table->foreign('verify_by_emp_id')
@@ -49,18 +48,17 @@ return new class extends Migration {
             $table->id();
             $table->string('PO_Number')->nullable()->unique();
             $table->string('PO_Supplier') ->nullable();
-            $table->string('PO_Date')->nullable();
+            $table->dateTime('PO_Date')->nullable();
             $table->string('PR_Number')->unique();
-            $table->date('supplier_receive_date')->nullable();
             $table->integer('poNumbered_by')->nullable();
 
             $table->string('RIS_Number')->nullable();
-            $table->date('RIS_Date')->nullable();
+            $table->dateTime('RIS_Date')->nullable();
             $table->integer('risNumbered_by')->nullable();
 
             // TODO Uncomment if needed
             $table->string('SSMI_Number')->nullable();
-            $table->date('SSMI_Date')->nullable();
+            $table->dateTime('SSMI_Date')->nullable();
             $table->integer('ssmiNumbered_by')->nullable();
 
 

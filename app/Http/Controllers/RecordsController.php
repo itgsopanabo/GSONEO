@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreRecordRequest;
+use App\Http\Requests\UpdateRecordRequest;
 use App\Models\Records;
 use App\Models\RecordsClasses;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 
 class RecordsController extends Controller
@@ -47,6 +49,8 @@ class RecordsController extends Controller
 
     public function store(StoreRecordRequest $request)
     {
+        Gate::authorize('create', [Records::class, RecordsClasses::find($request->validated('record_class_id'))]);
+
         $record = Records::create($request->validated());
 
         return redirect()
@@ -56,10 +60,10 @@ class RecordsController extends Controller
 
     public function show(Request $request, Records $record)
     {
-
+        Gate::authorize('view', $record);
 
         return Inertia::render('Records/Show', [
-            'record' => $record->load('recordClass', 'archivedBy:emp_id,name'),
+            'record' => $record->load('recordClass', 'archivedBy:emp_id,emp_fname,emp_lname'),
         ]);
     }
 
@@ -75,11 +79,13 @@ class RecordsController extends Controller
 
     public function update(UpdateRecordRequest $request, Records $record)
     {
-        $this->authorize('update', $record);
+        Gate::authorize('update', $record);
 
         if ($record->is_archived) {
             return back()->with('error', 'Unarchive this record before editing it.');
         }
+
+        Gate::authorize('create', [Records::class, RecordsClasses::find($request->validated('record_class_id'))]);
 
         $record->update($request->validated());
 
@@ -90,7 +96,7 @@ class RecordsController extends Controller
 
     public function archive(Request $request, Records $record)
     {
-        $this->authorize('update', $record);
+        Gate::authorize('update', $record);
 
         $record->forceFill([
             'archived_at' => now(),
@@ -102,7 +108,7 @@ class RecordsController extends Controller
 
     public function unarchive(Request $request, Records $record)
     {
-        $this->authorize('update', $record);
+        Gate::authorize('update', $record);
 
         $record->forceFill([
             'archived_at' => null,

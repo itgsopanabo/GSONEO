@@ -6,6 +6,8 @@ use App\Models\AuditLog;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
 use App\Models\User;
+use App\Services\ProcurementCancellation;
+use App\Services\ProcurementStatusChange;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -37,7 +39,9 @@ class PurchaseOrderController extends Controller
                     ->orWhereNull('mode_of_procurement')
                     ->orWhere('status', 205);
             })
-            ->whereDoesntHave('purchaseOrder')
+            // A cancelled order doesn't count as having one: the request was sent
+            // back to canvassing precisely so a new PO can be raised here.
+            ->whereDoesntHave('purchaseOrder', fn ($q) => $q->where('status', '!=', ProcurementCancellation::CANCELLED))
             ->get()
             ->map(fn($pr) => (object)[
                 'id' => null,
@@ -73,6 +77,66 @@ class PurchaseOrderController extends Controller
 
 
     /**
+     * Cancel this order only, leaving the request alive (administrators only).
+     *
+     * The request returns to canvassing so a new PO can be issued — for a supplier
+     * who backed out, or an order raised against the wrong request. To void the
+     * request as well, cancel the request instead. Guarded by
+     * permission:procurement.override; the rules live in ProcurementCancellation.
+     */
+    public function cancel(Request $request, PurchaseOrder $purchase_order, ProcurementCancellation $cancellation)
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+
+        if ($refusal = $cancellation->orderRefusal($purchase_order)) {
+            return back()->with('error', $refusal);
+        }
+
+        $cancellation->cancelOrder($purchase_order, $validated['reason']);
+
+        $label = $purchase_order->PO_Number ?: "for {$purchase_order->PR_Number}";
+
+        return back()->with('success', "Purchase order {$label} has been cancelled; the request is back in canvassing.");
+    }
+
+    /**
+     * Move an order to another status (administrators only).
+     *
+     * This is how a delivery that went the wrong way — sent to SSMI when it
+     * belonged in Incoming — is put back. Moving below a stage voids that stage's
+     * document number so it can be issued again; ProcurementStatusChange says
+     * which moves are possible and what each one voids.
+     */
+    public function changeStatus(Request $request, PurchaseOrder $purchase_order, ProcurementStatusChange $statuses)
+    {
+        $validated = $request->validate([
+            'status' => ['required', 'integer'],
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+
+        $code = (int) $validated['status'];
+
+        if ($code === (int) $purchase_order->status) {
+            return back()->with('error', 'That is already this order\'s status.');
+        }
+
+        if ($blocker = $statuses->orderBlocker($code, $purchase_order)) {
+            return back()->with('error', $blocker);
+        }
+
+        $voided = $statuses->voided($purchase_order, $code);
+
+        $statuses->moveOrder($purchase_order, $code, $validated['reason']);
+
+        $label = DB::table('status')->where('status_code', $code)->value('status_desc') ?? "status {$code}";
+        $note = $voided ? ' Voided: '.implode(', ', $voided).'.' : '';
+
+        return back()->with('success', "Purchase order moved to {$label}.{$note}");
+    }
+
+    /**
      * Display the specified resource.
      */
     public function store(PurchaseOrder $purchaseOrder, Request $request)
@@ -92,7 +156,7 @@ class PurchaseOrderController extends Controller
         $purchaseOrder = PurchaseOrder::create([
             'PO_Number' => $validated['ponumber'],
             'PO_Supplier' => $validated['supplier_name'],
-            'PO_Date' => $validated['poDate'],
+            'PO_Date' => $validated['poDate']->toDateString(),
             'PR_Number' => $purchaseRequest->id,
             'poNumbered_by' => auth()->id(),
             'status' => $purchaseRequest->status,
@@ -109,7 +173,6 @@ class PurchaseOrderController extends Controller
             'po_number_mode' => 'required|in:auto,manual',
             'po_number' => 'required_if:po_number_mode,manual|nullable|integer|min:1|max:99999',
             'supplier' => 'required|string|max:255',
-            'date_received' => 'required|date',
         ]);
 
         $poNumber = DB::transaction(function () use ($validated) {
@@ -149,8 +212,7 @@ class PurchaseOrderController extends Controller
         $purchase_order->update([
             'PO_Number' => $poNumber,
             'PO_Supplier' => $validated['supplier'],
-            'PO_Date' => now()->format('Y-m-d'),
-            'supplier_receive_date' => $validated['date_received'],
+            'PO_Date' => now()->toDateTimeString(),
             'poNumbered_by' => auth()->id(),
             'status' => 230, // PO Generated
         ]);
@@ -171,7 +233,6 @@ class PurchaseOrderController extends Controller
             ->route('purchase-orders.index')
             ->with('success', 'PO number generated successfully.')
             ->with('po_number', $purchase_order->PO_Number)
-            ->with('supplier', $purchase_order->PO_Supplier)
-            ->with('date_received', $purchase_order->supplier_receive_date);
+            ->with('supplier', $purchase_order->PO_Supplier);
     }
 }

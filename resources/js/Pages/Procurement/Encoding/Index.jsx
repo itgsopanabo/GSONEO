@@ -1,5 +1,6 @@
 import {Head, Link, router, usePage} from '@inertiajs/react';
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.jsx";
+import {formatDate} from "@/Utils/formatDate.js";
 import {STATUS_MAP} from '@/Constants/statusConfig.js';
 import {useEffect, useMemo, useState} from "react";
 import {Search, PanelRightClose, PanelRightOpen, FileText, Plus} from "lucide-react";
@@ -17,7 +18,7 @@ function formatRelativeTime(dateString) {
     const diffDays = Math.floor(diffHours / 24);
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return formatDate(date);
 }
 
 function formatCurrency(value) {
@@ -71,7 +72,7 @@ export default function Index({purchaseRequests}) {
     const filteredRequests = useMemo(() => {
         if (!search.trim()) return requests;
         const q = search.trim().toLowerCase();
-        return requests.filter(pr => pr.pr_number?.toLowerCase().includes(q) || pr.requester_name?.toLowerCase().includes(q) || pr.requester_department?.toLowerCase().includes(q));
+        return requests.filter(pr => pr.pr_number?.toLowerCase().includes(q) || pr.requester_department?.toLowerCase().includes(q));
     }, [requests, search]);
 
     const selected = requests.find(r => r.id === selectedId) || null;
@@ -118,7 +119,7 @@ export default function Index({purchaseRequests}) {
                                 type="text"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search PR number, requester..."
+                                placeholder="Search PR number, department..."
                                 className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400"
                             />
                         </div>
@@ -149,7 +150,7 @@ export default function Index({purchaseRequests}) {
                                     </span>
                                 </div>
                                 <p className="text-xs font-medium text-gray-900 dark:text-white truncate">
-                                    {pr.requester_name || 'Untitled request'}
+                                    {pr.requester_department || 'No department'}
                                 </p>
                                 <div className="mt-1.5 flex items-center gap-2">
                                     {pr.items != null && (
@@ -211,10 +212,6 @@ export default function Index({purchaseRequests}) {
                         <div
                             className="px-6 py-5 border-b border-gray-100 dark:border-gray-700/60 flex items-start justify-between">
                             <div>
-                                <div
-                                    className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 mb-1.5">
-                                    <span>Created by {selected.requester_name || 'N/A'}</span>
-                                </div>
                                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                                     {selected.pr_number || selected.requester_department || 'Purchase Request'}
                                 </h2>
@@ -238,15 +235,7 @@ export default function Index({purchaseRequests}) {
                                         Request Summary
                                     </p>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                                        <div>
-                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                                                Requester
-                                            </p>
-                                            <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                                {selected.requester_name || '—'}
-                                            </p>
-                                        </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                                         <div>
                                             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
                                                 Department
@@ -260,9 +249,7 @@ export default function Index({purchaseRequests}) {
                                                 Date Created
                                             </p>
                                             <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                                {selected.created_at ? new Date(selected.created_at).toLocaleDateString(undefined, {
-                                                    year: 'numeric', month: 'short', day: 'numeric'
-                                                }) : '—'}
+                                                {formatDate(selected.created_at)}
                                             </p>
                                         </div>
                                     </div>
@@ -301,9 +288,6 @@ export default function Index({purchaseRequests}) {
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700/40">
                                     {(selected.items || []).map((item, idx) => (<tr key={item.id ?? idx}>
                                         <td className="px-5 py-3 text-xs align-top">
-                                            <div className="font-medium text-gray-900 dark:text-white break-words">
-                                                {item.item_name}
-                                            </div>
                                             <ItemDescription text={item.item_desc}/>
                                         </td>
                                         <td className="px-5 py-3 text-xs text-gray-700 dark:text-gray-300 text-right align-top">

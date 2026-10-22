@@ -24,6 +24,7 @@
     },
     "dependencies": {
         "lucide-react": "^1.28.0",
+        "mermaid": "^12.0.0",
         "recharts": "^3.9.2"
     }
 }

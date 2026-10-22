@@ -1,5 +1,6 @@
 // resources/js/Pages/Records/Form.jsx
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
+import DateInput from '@/Components/DateInput.jsx';
 import { sensitivityOf, STATUS_LABELS, TRIGGERS, previewDisposal, formatDate } from './recordMeta';
 
 const field =
@@ -71,6 +72,8 @@ export default function Form({
                                  isArchived = false,
                              }) {
     const isModal = variant === 'modal';
+    // Kept on the Requesting Offices screen and shared with every page.
+    const { offices = [] } = usePage().props;
     const selected = classes.find((c) => String(c.id) === String(data.record_class_id));
     const sens = selected ? sensitivityOf(selected.sensitivity) : null;
     const sentence = disposalSentence(selected, data.retention_starts_on);
@@ -162,23 +165,30 @@ export default function Form({
 
                         <label className="block">
                             <Label>Date of the record</Label>
-                            <input
-                                type="date"
+                            <DateInput
                                 value={data.record_date ?? ''}
                                 onChange={(e) => setData('record_date', e.target.value)}
-                                className={`${field} mt-1.5`}
+                                className="mt-1.5"
                             />
                             <Err>{errors.record_date}</Err>
                         </label>
 
                         <label className="block">
                             <Label>Originating office</Label>
-                            <input
-                                type="text"
+                            <select
                                 value={data.originating_office ?? ''}
                                 onChange={(e) => setData('originating_office', e.target.value)}
                                 className={`${field} mt-1.5`}
-                            />
+                            >
+                                <option value="">Select an office…</option>
+                                {/* A record filed under an office since retired keeps it as an option. */}
+                                {data.originating_office && !offices.some((o) => o.name === data.originating_office) && (
+                                    <option value={data.originating_office}>{data.originating_office} (retired)</option>
+                                )}
+                                {offices.map((office) => (
+                                    <option key={office.code} value={office.name}>{office.name} ({office.code})</option>
+                                ))}
+                            </select>
                             <Err>{errors.originating_office}</Err>
                         </label>
 
@@ -245,12 +255,11 @@ export default function Form({
                             >
                                 Retention starts on
                             </Label>
-                            <input
-                                type="date"
+                            <DateInput
                                 value={data.retention_starts_on ?? ''}
                                 onChange={(e) => setData('retention_starts_on', e.target.value)}
                                 disabled={selected?.is_permanent}
-                                className={`${field} mt-1.5 disabled:bg-gray-100 disabled:text-gray-400 dark:disabled:bg-gray-800`}
+                                className="mt-1.5"
                             />
                             <Err>{errors.retention_starts_on}</Err>
                         </label>

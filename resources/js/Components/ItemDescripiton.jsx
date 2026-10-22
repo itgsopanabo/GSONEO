@@ -1,6 +1,6 @@
 import {useState, useRef, useLayoutEffect} from 'react';
 
-export default function ItemDescription({text, lines = 2}) {
+export default function     ItemDescription({text, lines = 2}) {
     const [expanded, setExpanded] = useState(false);
     const [clamped, setClamped] = useState(false);
     const ref = useRef(null);
