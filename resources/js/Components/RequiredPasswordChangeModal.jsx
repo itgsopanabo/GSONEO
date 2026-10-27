@@ -7,9 +7,10 @@ import PrimaryButton from '@/Components/PrimaryButton';
 import TextInput from '@/Components/TextInput';
 
 /**
- * Shown on every page while the signed-in user still has the shared default
- * password. It can't be dismissed: the only ways out are choosing a new
- * password or signing out. The server blocks changes in the meantime too.
+ * Shown on every page while the signed-in user is still on a one-time
+ * password from an admin. It can't be dismissed: the only ways out are
+ * choosing a new password or signing out. The server blocks changes in the
+ * meantime too.
  */
 export default function RequiredPasswordChangeModal() {
     const { mustChangePassword, auth } = usePage().props;
@@ -32,7 +33,7 @@ export default function RequiredPasswordChangeModal() {
             <form onSubmit={submit} className="p-6">
                 <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Set up a new password</h2>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    Welcome{auth?.user?.emp_fname ? `, ${auth.user.emp_fname}` : ''}. You signed in with the default
+                    Welcome{auth?.user?.emp_fname ? `, ${auth.user.emp_fname}` : ''}. You signed in with a one-time
                     password, so choose your own before you continue. Use at least 8 characters.
                 </p>
 

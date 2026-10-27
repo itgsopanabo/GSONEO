@@ -178,7 +178,7 @@ DB_USERNAME=laravel_user
 DB_PASSWORD=<long random password>
 
 SESSION_SECURE_COOKIE=true      # once HTTPS is on (section 9)
-USER_DEFAULT_PASSWORD=<choose one; staff must change it at first sign-in>
+USER_TEMP_PASSWORD_HOURS=72     # how long a one-time password from an admin works
 OCRSPACE_KEY=<key>
 ```
 
@@ -241,7 +241,7 @@ docker compose exec app php artisan erd:generate
 
 Then:
 
-1. Sign in as the Superadmin and replace the default password.
+1. Issue the Superadmin a one-time password with `docker compose exec app php artisan user:one-time-password <emp_id>`, sign in with it, and choose your own.
 2. Review **Utils → Roles & Permissions**.
 3. Add users from **User List** — and issue each of them a VPN profile.
 
@@ -487,6 +487,14 @@ docker compose exec app php artisan up
 - **Run `backup.ps1` right before `migrate`.**
 - **Schedule updates** outside office hours and tell users — with one server there is no partial availability.
 - **If the Docker image changed** (`docker/php/Dockerfile`), add `docker compose up -d --build app` after `git pull`.
+
+### 11.1 The update that retired the default password
+
+The migration `2026_10_27_000000_replace_default_password_with_one_time_passwords` locks every account still on the old shared default password and signs it out. After `migrate`:
+
+1. Find the locked accounts in `storage/logs/laravel.log`: search for "Accounts still on the old default password were locked". The line lists their employee IDs.
+2. Issue each of them a one-time password from **User List → Issue one-time password**. If a locked account is the only admin, use `docker compose exec app php artisan user:one-time-password <emp_id>` instead.
+3. Remove `USER_DEFAULT_PASSWORD` from `.env`; it is no longer read. Add `USER_TEMP_PASSWORD_HOURS` if 72 hours does not suit you.
 
 ---
 

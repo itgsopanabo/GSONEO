@@ -1,6 +1,10 @@
 <?php
 
 use App\Models\User;
+use Database\Seeders\RoleSeeder;
+use Database\Seeders\StatusSeeder;
+
+beforeEach(fn () => $this->seed([RoleSeeder::class, StatusSeeder::class]));
 
 test('login screen can be rendered', function () {
     $response = $this->get('/login');
@@ -12,7 +16,7 @@ test('users can authenticate using the login screen', function () {
     $user = User::factory()->create();
 
     $response = $this->post('/login', [
-        'email' => $user->email,
+        'empID' => $user->emp_id,
         'password' => 'password',
     ]);
 
@@ -24,7 +28,7 @@ test('users can not authenticate with invalid password', function () {
     $user = User::factory()->create();
 
     $this->post('/login', [
-        'email' => $user->email,
+        'empID' => $user->emp_id,
         'password' => 'wrong-password',
     ]);
 

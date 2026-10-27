@@ -389,30 +389,47 @@ The User List (`users.index`) requires `users.manage`.
 
 | Action | Where | Notes |
 |---|---|---|
-| Add user | **Add user** dialog on the list | Employee ID must be unique. Starts on the default password unless one is typed. |
+| Add user | **Add user** dialog on the list | Employee ID must be unique. The account gets a one-time password, shown once. |
 | Change status | Dropdown on list or detail page | You can't deactivate yourself. Inactive users are signed out on their next request. |
 | Change role | Detail page → Role | Confirmation shows from/to. You can't change your own role. Logged as `role_changed`. |
-| Set password | **Set password** on the list, or detail page | See below. You can't reset your own here; use the profile page. |
+| Issue one-time password | **Issue one-time password** on the list, or detail page | See below. You can't reset your own here; use the profile page. |
 | Delete | List or detail page | Refused if the user has related records; set them inactive instead. |
 
-### Setting a password for someone
+### One-time passwords
 
-- **What an admin can do:** passwords are hashed and can't be viewed, only replaced.
-- **Length rule:** new passwords need at least 8 characters, except the default password.
-- **Generate:** a button fills in a random 14-character password without look-alike characters.
-- **Sign them out:** on by default. It deletes the user's sessions and rotates their remember token.
-- **Audit:** logged as `password_reset`, without the password.
+There is no shared default password. Every new or reset account gets its own random **one-time password**. An admin never types or chooses it.
 
-### Default password and forced change
+- **Made by the server:** `User::issueTemporaryPassword()` makes 12 random characters without look-alikes (no `0/O`, `1/l/I`) and saves only the hash.
+- **Shown once:** the password goes to the admin in the session flash (`flash.temporary_password`). `TemporaryPasswordModal` shows it with a **Copy** button. After **Done** or the next page load, nobody can see it again. Give it to the user in person or through a channel only they can read.
+- **Expires:** it works for `USER_TEMP_PASSWORD_HOURS` hours (default 72, in `config/Users.php`). The time is stored in `users.temporary_password_expires_at`; `NULL` means the user chose their own password.
+- **Issuing a new one:** the old password stops working right away. A new remember token is set, so an old "keep me signed in" cookie can't bring the previous login back.
+- **Sign them out:** on by default. It deletes the user's sessions.
+- **From the console:** when no admin can sign in (a new install, or a locked admin), run `php artisan user:one-time-password {emp_id}` on the server. It prints the password once and signs the user out.
+- **Audit:** `created` (user) or `password_reset`, without the password. A console reset has an empty `user_id`.
 
-`config/Users.php` sets `default_password` (env `USER_DEFAULT_PASSWORD`, default `gso123`).
+### First sign-in on a one-time password
 
-Anyone signed in with the default password:
+Anyone signed in on a one-time password:
 - sees a **"Set up a new password"** dialog on every page that can't be closed; the only choices are save or sign out;
 - cannot save, change or delete anything until they do: `RequirePasswordChange` middleware refuses every non-GET request except `password.first-change` and `logout`;
-- must choose a password of at least 8 characters that isn't the default.
+- must choose a password of at least 8 characters that is not the one-time password.
 
-The hash check runs once per session and again only when the password changes. The result is cached in the session against a fingerprint of the stored hash. The change is logged as `password_changed`.
+Saving clears `temporary_password_expires_at` and is logged as `password_changed`.
+
+If the one-time password expires first, sign-in is refused with "Your one-time password has expired." A session left open past the expiry is signed out on its next request. An admin then issues a new one.
+
+### Sign-in protection
+
+`LoginRequest` handles every sign-in.
+
+- **One message for every failure:** an unknown employee ID and a wrong password both show "The employee ID or password is incorrect." The form can't be used to find out which employee IDs have accounts. `Auth::attempt` also takes the same time for both.
+- **Limit per employee ID:** 5 failed attempts per minute for one ID from one IP address.
+- **Limit per IP address:** 20 failed attempts in 10 minutes from one IP address, across all employee IDs. This stops one password being tried against many IDs. A successful sign-in does not reset this count. Staff behind one shared IP address share this limit.
+- **After the password is correct:** inactive accounts and expired one-time passwords are refused and signed back out. These messages appear only after a correct password, so they reveal nothing to a guesser.
+
+### Moving from the old default password
+
+Migration `2026_10_27_000000_replace_default_password_with_one_time_passwords` adds `temporary_password_expires_at`. It also finds every account still on the old shared default (`USER_DEFAULT_PASSWORD`, or `gso123`) and **locks** it: the password becomes a random one nobody knows, and the user is signed out. Their employee IDs are written to the log as a warning ("Accounts still on the old default password were locked"). Issue each of them a one-time password. If one of them is the only admin, use the console command.
 
 ### Registration
 
@@ -438,7 +455,7 @@ Passwords are never written to `old_values` or `new_values`.
 |---|---|
 | `created`, `updated`, `verified`, `Canvassing`, `PO Proceeding`, `Generate RIS Number` | Procurement and inventory controllers |
 | `viewed`, `viewed_index` | Page views (hidden from the dashboard's activity list) |
-| `password_reset`, `role_changed`, `created` (user) | `UserController` |
+| `password_reset`, `role_changed`, `created` (user) | `UserController`; `password_reset` also from `php artisan user:one-time-password` |
 | `password_changed` | `RequiredPasswordChangeController` |
 | `permissions_updated` | `RolePermissionController` |
 | `document_branding_updated` | `DocumentSettingController`; the description names the settings changed, and `old_values` / `new_values` hold their before and after |
@@ -638,9 +655,17 @@ Run it again after any migration. The files are overwritten and carry the genera
 
 Regenerating the ERD stays a command-line task, because the web server cannot write to `docs/`.
 
-### Change the default password
+### Change how long one-time passwords last
 
-Set `USER_DEFAULT_PASSWORD` in `.env`, then run `php artisan config:clear` if the config is cached.
+Set `USER_TEMP_PASSWORD_HOURS` in `.env` (default 72), then run `php artisan config:clear` if the config is cached. It applies to passwords issued after the change.
+
+### Let someone in when no admin can sign in
+
+```bash
+php artisan user:one-time-password 12345
+```
+
+Prints a one-time password for employee 12345 and signs them out everywhere. In Docker, prefix it with `docker compose exec app`.
 
 ---
 

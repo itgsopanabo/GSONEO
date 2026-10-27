@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useForm } from '@inertiajs/react';
 import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
@@ -11,21 +11,17 @@ const selectClasses =
     'mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300';
 
 /**
- * Adds an account. New users start on the shared default password unless the
- * admin types one, and are made to choose their own at first sign-in.
+ * Adds an account. The server gives it a random one-time password, which
+ * TemporaryPasswordModal shows once; the new user must choose their own at
+ * first sign-in.
  */
-export default function AddUserModal({ show, onClose, roles = [], statuses = [], defaultStatusId, defaultPassword }) {
-    const canUseDefault = Boolean(defaultPassword);
-    const [visible, setVisible] = useState(false);
+export default function AddUserModal({ show, onClose, roles = [], statuses = [], defaultStatusId }) {
     const { data, setData, post, processing, errors, reset, clearErrors } = useForm({
         emp_id: '',
         emp_fname: '',
         emp_lname: '',
         role_id: '',
         status_id: defaultStatusId ?? '',
-        use_default_password: canUseDefault,
-        password: '',
-        password_confirmation: '',
     });
 
     // Start with a clean form every time the dialog opens.
@@ -33,7 +29,6 @@ export default function AddUserModal({ show, onClose, roles = [], statuses = [],
         if (show) {
             reset();
             clearErrors();
-            setVisible(false);
         }
     }, [show]);
 
@@ -50,14 +45,8 @@ export default function AddUserModal({ show, onClose, roles = [], statuses = [],
         });
     };
 
-    const needsPassword = !data.use_default_password;
     const incomplete =
-        !data.emp_id ||
-        !data.emp_fname.trim() ||
-        !data.emp_lname.trim() ||
-        !data.role_id ||
-        !data.status_id ||
-        (needsPassword && (!data.password || !data.password_confirmation));
+        !data.emp_id || !data.emp_fname.trim() || !data.emp_lname.trim() || !data.role_id || !data.status_id;
 
     return (
         <Modal show={show} onClose={close} maxWidth="lg">
@@ -144,59 +133,10 @@ export default function AddUserModal({ show, onClose, roles = [], statuses = [],
 
                     <div className="sm:col-span-2 rounded-md border border-gray-200 p-4 dark:border-gray-700">
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Password</p>
-
-                        {canUseDefault && (
-                            <label className="mt-2 flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
-                                <input
-                                    type="checkbox"
-                                    checked={data.use_default_password}
-                                    onChange={(e) => setData('use_default_password', e.target.checked)}
-                                    className="mt-0.5 rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900"
-                                />
-                                <span>
-                                    Start with the default password
-                                    <span className="block text-xs text-gray-500 dark:text-gray-400">
-                                        They sign in with <span className="font-mono">{defaultPassword}</span> and
-                                        must choose their own password right away.
-                                    </span>
-                                </span>
-                            </label>
-                        )}
-
-                        {needsPassword && (
-                            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <div>
-                                    <InputLabel htmlFor="add-password" value="Password" />
-                                    <TextInput
-                                        id="add-password"
-                                        type={visible ? 'text' : 'password'}
-                                        value={data.password}
-                                        onChange={(e) => setData('password', e.target.value)}
-                                        autoComplete="new-password"
-                                        className="mt-1 block w-full"
-                                    />
-                                    <InputError message={errors.password} className="mt-2" />
-                                </div>
-                                <div>
-                                    <InputLabel htmlFor="add-password-confirmation" value="Type it again" />
-                                    <TextInput
-                                        id="add-password-confirmation"
-                                        type={visible ? 'text' : 'password'}
-                                        value={data.password_confirmation}
-                                        onChange={(e) => setData('password_confirmation', e.target.value)}
-                                        autoComplete="new-password"
-                                        className="mt-1 block w-full"
-                                    />
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setVisible((v) => !v)}
-                                    className="justify-self-start text-xs font-medium text-gray-600 hover:underline dark:text-gray-300"
-                                >
-                                    {visible ? 'Hide password' : 'Show password'}
-                                </button>
-                            </div>
-                        )}
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            A random one-time password is made for this account. You see it once, right after you
+                            add the user. They must choose their own password at first sign-in.
+                        </p>
                     </div>
                 </div>
 

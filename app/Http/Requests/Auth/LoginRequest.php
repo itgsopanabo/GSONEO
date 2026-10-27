@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Auth;
 
-use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
@@ -12,6 +11,18 @@ use Illuminate\Validation\ValidationException;
 
 class LoginRequest extends FormRequest
 {
+    /** Failed attempts allowed for one employee ID from one IP address, per minute. */
+    private const MAX_ATTEMPTS_PER_ID = 5;
+
+    /**
+     * Failed attempts allowed from one IP address across every employee ID,
+     * per IP_DECAY_SECONDS. Stops one password being tried against many IDs,
+     * which the per-ID limit alone never notices.
+     */
+    private const MAX_ATTEMPTS_PER_IP = 20;
+
+    private const IP_DECAY_SECONDS = 600;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -38,47 +49,47 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        $empId = (int)$this->input('empID');
-        $password = $this->input('password');
-
-        // 1. Check if the Employee ID even exists in the database
-        $user = User::where('emp_id', $empId)->first();
-
-        if (!$user) {
-            RateLimiter::hit($this->throttleKey());
-
-            throw ValidationException::withMessages([
-                'empID' => 'This Employee ID is not yet registered.',
-            ]);
-        }
-
-        // 2. If the user exists, try to authenticate with the password
         $credentials = [
-            'emp_id' => $empId,
-            'password' => $password,
+            'emp_id' => (int) $this->input('empID'),
+            'password' => $this->input('password'),
         ];
 
-        if (!Auth::attempt($credentials, $this->boolean('remember'))) {
+        // 1. One message for an unknown ID and a wrong password, so the form
+        //    can't be used to find out which employee IDs have accounts.
+        //    Auth::attempt also takes the same time for both.
+        if (! Auth::attempt($credentials, $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
+            RateLimiter::hit($this->ipThrottleKey(), self::IP_DECAY_SECONDS);
 
             throw ValidationException::withMessages([
-                'password' => 'The password you entered is incorrect.',
+                'empID' => 'The employee ID or password is incorrect.',
             ]);
         }
 
-        // 3. Only active accounts may proceed. Checked after the password so a
+        // 2. Only active accounts may proceed. Checked after the password so a
         //    wrong password never reveals whether an account is deactivated.
-        if (!Auth::user()->isActive()) {
-            Auth::logout();
-            $this->session()->invalidate();
-            $this->session()->regenerateToken();
-
-            throw ValidationException::withMessages([
-                'empID' => 'This account is inactive. Please contact an administrator.',
-            ]);
+        if (! Auth::user()->isActive()) {
+            $this->refuse('This account is inactive. Please contact an administrator.');
         }
 
+        // 3. A one-time password from an admin stops working once it expires.
+        if (Auth::user()->temporaryPasswordExpired()) {
+            $this->refuse('Your one-time password has expired. Ask an administrator for a new one.');
+        }
+
+        // The IP count is left to run out on its own, so one working account
+        // can't be used to reset it between guesses at others.
         RateLimiter::clear($this->throttleKey());
+    }
+
+    /** Sign back out after a correct password that still may not be used. */
+    private function refuse(string $message): never
+    {
+        Auth::logout();
+        $this->session()->invalidate();
+        $this->session()->regenerateToken();
+
+        throw ValidationException::withMessages(['empID' => $message]);
     }
 
     /**
@@ -86,20 +97,27 @@ class LoginRequest extends FormRequest
      */
     public function ensureIsNotRateLimited(): void
     {
-        if (!RateLimiter::tooManyAttempts($this->throttleKey(), 5)) {
-            return;
+        $limits = [
+            $this->throttleKey() => self::MAX_ATTEMPTS_PER_ID,
+            $this->ipThrottleKey() => self::MAX_ATTEMPTS_PER_IP,
+        ];
+
+        foreach ($limits as $key => $maxAttempts) {
+            if (! RateLimiter::tooManyAttempts($key, $maxAttempts)) {
+                continue;
+            }
+
+            event(new Lockout($this));
+
+            $seconds = RateLimiter::availableIn($key);
+
+            throw ValidationException::withMessages([
+                'empID' => trans('auth.throttle', [
+                    'seconds' => $seconds,
+                    'minutes' => ceil($seconds / 60),
+                ]),
+            ]);
         }
-
-        event(new Lockout($this));
-
-        $seconds = RateLimiter::availableIn($this->throttleKey());
-
-        throw ValidationException::withMessages([
-            'empID' => trans('auth.throttle', [
-                'seconds' => $seconds,
-                'minutes' => ceil($seconds / 60),
-            ]),
-        ]);
     }
 
     /**
@@ -109,5 +127,11 @@ class LoginRequest extends FormRequest
     {
         // Fixes the global lockout bug by separating keys per Employee ID
         return Str::transliterate($this->input('empID') . '|' . $this->ip());
+    }
+
+    /** Every failed attempt from this IP address, whatever employee ID it used. */
+    public function ipThrottleKey(): string
+    {
+        return 'login-ip|' . $this->ip();
     }
 }
