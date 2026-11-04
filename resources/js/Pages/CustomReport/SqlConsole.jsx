@@ -1,6 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react'
 import { useEffect, useMemo, useState } from 'react'
-import { Bookmark, Download, Link2, Pencil, Play, Save, Search, Table2, Trash2, Users } from 'lucide-react'
+import { Bookmark, Download, FileText, Link2, Pencil, Play, Save, Search, Table2, Trash2, Users } from 'lucide-react'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.jsx'
 import Modal from '@/Components/Modal'
 import InputError from '@/Components/InputError'
@@ -67,6 +67,13 @@ export default function SqlConsole({
     const loaded = savedQueries.find((q) => q.id === loadedId) ?? null
     const changedSinceLoad = loaded && loaded.sql.trim() !== query.trim()
 
+    // The title and description printed at the top of the PDF and CSV. They start
+    // as the saved query's name and description, and can be changed per download.
+    const [heading, setHeading] = useState({ title: loadedQuery?.name ?? '', description: loadedQuery?.description ?? '' })
+    useEffect(() => {
+        if (loaded) setHeading({ title: loaded.name, description: loaded.description ?? '' })
+    }, [loaded?.id, loaded?.name, loaded?.description])  // eslint-disable-line react-hooks/exhaustive-deps
+
     const mine = savedQueries.filter((q) => q.mine)
     const shared = savedQueries.filter((q) => !q.mine)
     const matches = (q) => !filter.trim() || `${q.name} ${q.description ?? ''}`.toLowerCase().includes(filter.trim().toLowerCase())
@@ -90,8 +97,9 @@ export default function SqlConsole({
         })
     }
 
-    function downloadCsv() {
-        const params = loaded && !changedSinceLoad ? { saved: loaded.id, export: 'csv' } : { sql: query, export: 'csv' }
+    function download(format) {
+        const source = loaded && !changedSinceLoad ? { saved: loaded.id } : { sql: query }
+        const params = { ...source, export: format, title: heading.title.trim(), description: heading.description.trim() }
         window.location = `${route('sql-console.index')}?${new URLSearchParams(params)}`
     }
 
@@ -214,7 +222,7 @@ export default function SqlConsole({
                                 <Bookmark className="h-3.5 w-3.5 text-indigo-500" />
                                 <span className="font-semibold text-gray-900 dark:text-white">{loaded.name}</span>
                                 {changedSinceLoad && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Edited, not saved</span>}
-                                <button type="button" onClick={() => { setLoadedId(null); setQuery('') }} className="text-gray-400 hover:text-gray-700 hover:underline dark:hover:text-gray-200">
+                                <button type="button" onClick={() => { setLoadedId(null); setQuery(''); setHeading({ title: '', description: '' }) }} className="text-gray-400 hover:text-gray-700 hover:underline dark:hover:text-gray-200">
                                     Close
                                 </button>
                             </div>
@@ -254,13 +262,22 @@ export default function SqlConsole({
                                 {loaded?.mine ? 'Save changes…' : 'Save query…'}
                             </button>
                             {rows.length > 0 && (
-                                <button
-                                    onClick={downloadCsv}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-                                >
-                                    <Download className="h-4 w-4" />
-                                    Download CSV
-                                </button>
+                                <>
+                                    <button
+                                        onClick={() => download('csv')}
+                                        className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                                    >
+                                        <Download className="h-4 w-4" />
+                                        Download CSV
+                                    </button>
+                                    <button
+                                        onClick={() => download('pdf')}
+                                        className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                                    >
+                                        <FileText className="h-4 w-4" />
+                                        Save as PDF
+                                    </button>
+                                </>
                             )}
                             <span className="text-[11px] text-gray-500 dark:text-gray-400">Ctrl/Cmd + Enter to run · Ctrl/Cmd + S to save</span>
                         </div>
@@ -349,6 +366,27 @@ export default function SqlConsole({
 
                 {!error && headers.length > 0 && (
                     <div className="space-y-2">
+                        <div className="grid gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] dark:border-gray-700/60 dark:bg-gray-800">
+                            <div>
+                                <label htmlFor="report-title" className="block text-xs font-medium text-gray-700 dark:text-gray-300">Report title</label>
+                                <input id="report-title" type="text" maxLength={150} value={heading.title}
+                                       onChange={(e) => setHeading({ ...heading, title: e.target.value })}
+                                       placeholder="e.g. Report of Purchase Orders Issued" className={inputClass} />
+                            </div>
+                            <div>
+                                <label htmlFor="report-description" className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                                    Description <span className="font-normal text-gray-400">(optional)</span>
+                                </label>
+                                <textarea id="report-description" rows={1} maxLength={1000} value={heading.description}
+                                          onChange={(e) => setHeading({ ...heading, description: e.target.value })}
+                                          placeholder="e.g. Purchase orders issued for October 2026, for submission to COA" className={inputClass} />
+                            </div>
+                            <p className="text-[11px] text-gray-500 sm:col-span-2 dark:text-gray-400">
+                                Printed at the top of the PDF and the CSV.
+                                {loaded && ' They start as the saved query’s name and description; changing them here does not change the saved query.'}
+                            </p>
+                        </div>
+
                         <p className="text-xs text-gray-600 dark:text-gray-400">
                             {rowCount.toLocaleString()} {rowCount === 1 ? 'row' : 'rows'}
                             {elapsedMs !== null && ` in ${elapsedMs} ms`}
