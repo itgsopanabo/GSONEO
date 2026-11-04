@@ -168,7 +168,7 @@ class InventoryController extends Controller
         // Without this, any PO number could be posted from any stage — a completed
         // order included — and be sent back to inspection.
         if ((int) $purchaseOrder->status !== self::STATUS_INCOMING) {
-            return back()->with('error', "PO #{$purchaseOrder->PO_Number} is not waiting for delivery.");
+            return back()->with('error', "PO #{$purchaseOrder->PO_Number} is not waiting for acceptance.");
         }
 
         if ($blocker = $purchaseOrder->missingBlocker()) {
@@ -196,7 +196,7 @@ class InventoryController extends Controller
         // Land on the acceptance just recorded.
         return redirect()
             ->route('inventory.index', ['view' => 'accepted', 'order' => $purchaseOrder->id])
-            ->with('success', "Delivery for PO #{$purchaseOrder->PO_Number} accepted. It is now waiting for inspection.");
+            ->with('success', "PO #{$purchaseOrder->PO_Number} accepted into Inventory. It is now waiting for inspection.");
     }
 
 
