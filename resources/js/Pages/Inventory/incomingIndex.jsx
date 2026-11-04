@@ -263,6 +263,11 @@ export default function IncomingIndex({purchaseOrders, focusOrder, filters, coun
                                         <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
                                             Order Details
                                         </p>
+                                        <div className="mb-4">
+                                            <Detail label="PO Description">
+                                                <span className="font-normal whitespace-pre-line">{selected.PO_Description || '—'}</span>
+                                            </Detail>
+                                        </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                             <Detail label="Requesting office">{office || '—'}</Detail>
                                             <Detail label="Purchase request"><span className="font-mono">{selected.PR_Number}</span></Detail>
@@ -277,13 +282,6 @@ export default function IncomingIndex({purchaseOrders, focusOrder, filters, coun
                                             <Detail label="Mode of procurement">{selected.purchase_request?.mode_of_procurement || '—'}</Detail>
                                             <Detail label="Order value"><span className="tabular-nums">{peso.format(total)}</span></Detail>
                                         </div>
-                                        {selected.purchase_request?.remarks_or_notes && (
-                                            <div className="mt-4">
-                                                <Detail label="Purpose">
-                                                    <span className="font-normal">{selected.purchase_request.remarks_or_notes}</span>
-                                                </Detail>
-                                            </div>
-                                        )}
                                     </div>
 
                                     {/* Tags matter while the order waits here; afterwards they live on the later pages. */}

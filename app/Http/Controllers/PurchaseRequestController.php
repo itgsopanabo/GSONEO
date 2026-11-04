@@ -375,6 +375,7 @@ class PurchaseRequestController extends Controller
     {
         $validated = $request->validate([
             'supplier' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:1000'],
             'po_number_mode' => ['required', 'in:auto,manual'],
             'po_number' => ['required_if:po_number_mode,manual', 'nullable', 'integer', 'min:1', 'max:9999'],
         ]);
@@ -395,6 +396,7 @@ class PurchaseRequestController extends Controller
             $purchaseOrder->update([
                 'PO_Number' => $poNumber,
                 'PO_Supplier' => $validated['supplier'],
+                'PO_Description' => $validated['description'] ?? null,
                 'PO_Date' => now()->format('Y-m-d'), //current date,
                 'poNumbered_by' => auth()->id(),
                 'status' => 230,    // whatever follows 220 in your flow

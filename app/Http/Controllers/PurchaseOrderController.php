@@ -173,6 +173,7 @@ class PurchaseOrderController extends Controller
             'po_number_mode' => 'required|in:auto,manual',
             'po_number' => 'required_if:po_number_mode,manual|nullable|integer|min:1|max:9999',
             'supplier' => 'required|string|max:255',
+            'description' => 'nullable|string|max:1000',
         ]);
 
         $poNumber = DB::transaction(function () use ($validated) {
@@ -185,11 +186,12 @@ class PurchaseOrderController extends Controller
             return DocumentNumber::firstFree(PurchaseOrder::query(), 'PO_Number', ['PO']);
         });
 
-        $oldValues = $purchase_order->only(['PO_Number', 'PO_Supplier', 'supplier_receive_date', 'status']);
+        $oldValues = $purchase_order->only(['PO_Number', 'PO_Supplier', 'PO_Description', 'supplier_receive_date', 'status']);
 
         $purchase_order->update([
             'PO_Number' => $poNumber,
             'PO_Supplier' => $validated['supplier'],
+            'PO_Description' => $validated['description'] ?? null,
             'PO_Date' => now()->toDateTimeString(),
             'poNumbered_by' => auth()->id(),
             'status' => 230, // PO Generated
@@ -202,7 +204,7 @@ class PurchaseOrderController extends Controller
             'auditable_id' => $purchase_order->id,
             'description' => "Generated PO number {$poNumber} for Purchase Order #{$purchase_order->id}",
             'old_values' => $oldValues,
-            'new_values' => $purchase_order->only(['PO_Number', 'PO_Supplier', 'supplier_receive_date', 'status']),
+            'new_values' => $purchase_order->only(['PO_Number', 'PO_Supplier', 'PO_Description', 'supplier_receive_date', 'status']),
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
         ]);

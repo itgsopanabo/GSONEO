@@ -59,11 +59,11 @@ const STAGE_PAGES = {
     600: ['inventory.outgoing', (po) => route('inventory.outgoings', { view: 'released', order: po.id }), 'Outgoing'],
 }
 
-function Fact({ label, children, mono = false }) {
+function Fact({ label, children, mono = false, className = '' }) {
     return (
-        <div>
+        <div className={className}>
             <dt className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</dt>
-            <dd className={`text-xs font-medium text-gray-900 dark:text-white ${mono ? 'font-mono' : ''}`}>{children ?? '—'}</dd>
+            <dd className={`whitespace-pre-line text-xs font-medium text-gray-900 dark:text-white ${mono ? 'font-mono' : ''}`}>{children ?? '—'}</dd>
         </div>
     )
 }
@@ -166,6 +166,12 @@ export default function RequestTimeline({
                                 ? po.released_to
                                 : po?.received_at ? `Accepted ${formatDate(po.received_at)}` : po?.PO_Number ? 'Not yet received' : null}
                         </Fact>
+                        {/* Typed in with the supplier when the PO number is generated. */}
+                        {po?.PO_Number && (
+                            <Fact label="PO Description" className="col-span-2 sm:col-span-3 lg:col-span-6">
+                                {po.PO_Description}
+                            </Fact>
+                        )}
                     </dl>
                 </section>
 
