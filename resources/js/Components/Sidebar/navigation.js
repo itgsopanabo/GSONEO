@@ -47,8 +47,6 @@ export const navigation = [
                     { label: 'Requisition & Issue Slip', icon: FileSpreadsheet, route: 'ris.index', active: 'ris.*', permission: 'inventory.ris' },
                     { label: 'SSMI', icon: PackageCheck, route: 'ssmi.index', active: 'ssmi.*', permission: 'inventory.ssmi' },
                     { label: 'Outgoing Requests', icon: ArrowUpFromLine, route: 'inventory.outgoings', active: 'inventory.outgoings', permission: 'inventory.outgoing' },
-                    // Anyone working an inventory stage can tag orders, so any of these opens it.
-                    { label: 'Missing Tracker', icon: CircleAlert, route: 'missing-tracker.index', active: 'missing-tracker.*', permission: ['inventory.incoming', 'inventory.iar', 'inventory.ris', 'inventory.ssmi', 'inventory.outgoing'] },
                 ],
             },
             {
@@ -83,6 +81,8 @@ export const navigation = [
                     { label: 'Document Branding', icon: Stamp, route: 'document-settings.index', active: 'document-settings.index', permission: 'documents.manage' },
                     { label: 'PDF Signatories', icon: PenLine, route: 'document-settings.signatories', active: 'document-settings.signatories', permission: 'documents.manage' },
                     { label: 'Record Classes', icon: Tags, route: 'record-classes.index', active: 'record-classes.*', permission: 'record_classes.manage' },
+                    // Anyone working an inventory stage can tag orders, so any of these opens it.
+                    { label: 'Missing Tracker', icon: CircleAlert, route: 'missing-tracker.index', active: 'missing-tracker.*', permission: ['inventory.incoming', 'inventory.iar', 'inventory.ris', 'inventory.ssmi', 'inventory.outgoing'] },
                     { label: 'Tracker Tags', icon: Tag, route: 'tracker-tags.index', active: 'tracker-tags.*', permission: 'tracker_tags.manage' },
                     { label: 'Audit Trail', icon: History, route: 'audit-logs.index', active: 'audit-logs.*', permission: 'audit.view' },
                 ],
