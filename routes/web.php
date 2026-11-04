@@ -214,7 +214,8 @@ Route::middleware(['auth', 'active', 'password.changed'])->group(function () {
 
     Route::middleware('permission:permissions.manage')->group(function () {
         Route::get('/roles-permissions', [RolePermissionController::class, 'index'])->name('permissions.index');
-        Route::put('/roles-permissions/{role}', [RolePermissionController::class, 'update'])->name('permissions.update');
+        Route::post('/roles-permissions', [RolePermissionController::class, 'store'])->name('permissions.store');
+        Route::put('/roles-permissions/{role}',[RolePermissionController::class, 'update'])->name('permissions.update');
     });
 
     Route::middleware('permission:docs.view')->group(function () {
