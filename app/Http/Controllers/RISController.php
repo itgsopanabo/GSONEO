@@ -95,7 +95,7 @@ class RISController extends Controller
         $oldValues = $purchaseOrder->only(['RIS_Number']);
 
         $risNumber = DB::transaction(function () use ($purchaseOrder) {
-            $candidate = DocumentNumber::next(PurchaseOrder::query(), 'RIS_Number', ['RIS']);
+            $candidate = DocumentNumber::next('ris');
 
             // Saved inside the transaction, so the lock above still covers it and
             // two people issuing at once cannot be handed the same number.

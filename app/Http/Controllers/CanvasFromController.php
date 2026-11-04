@@ -184,7 +184,7 @@ class CanvasFromController extends Controller
     {
         // The old CANVAS-000001 numbers carry no year, so they can't count
         // towards a year's serials; the new ones start at 0001.
-        return DocumentNumber::next(CanvasForms::query(), 'CF_Number');
+        return DocumentNumber::next('canvass');
     }
 
     private function streamCanvasForms(array $documentIds, string $prNumber)

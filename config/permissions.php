@@ -55,7 +55,7 @@ return [
             'permissions.manage' => ['Manage roles and permissions', 'Change what each role can access.'],
             'procurement.override' => ['Cancel and change status', 'Cancel a purchase request or its purchase order, and move either to another status, from Request Monitoring.'],
             'items.manage' => ['Items catalogue', 'Add, edit and bulk import items.'],
-            'documents.manage' => ['Document branding', 'Set the logos, letterhead, watermark, footer and signatories printed on generated PDFs.'],
+            'documents.manage' => ['Document branding', 'Set the logos, letterhead, watermark, footer and signatories printed on generated PDFs, and where document numbers start each year.'],
             'offices.manage' => ['Requesting offices', 'Add, rename and retire the offices that purchase requests and records are filed under.'],
             'calendar.manage' => ['Calendar events', 'Add, change and remove events on the dashboard calendar, such as holidays, meetings and deadlines.'],
             'tracker_tags.manage' => ['Tracker tags', 'Add, rename, recolour and retire the tags used to mark what an order is missing.'],

@@ -292,6 +292,6 @@ class EncodingController extends Controller
     {
         // Encoded and online requests share one PR series now that the number
         // carries no PR/EPR prefix to tell them apart.
-        return DocumentNumber::next(PurchaseRequest::query(), 'pr_number', ['PR', 'EPR']);
+        return DocumentNumber::next('pr');
     }
 }

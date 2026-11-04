@@ -8,6 +8,7 @@ use App\Http\Controllers\CanvasFromController;
 use App\Http\Controllers\CustomReportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocsController;
+use App\Http\Controllers\DocumentNumberingController;
 use App\Http\Controllers\DocumentSettingController;
 use App\Http\Controllers\EncodingController;
 use App\Http\Controllers\IARController;
@@ -233,6 +234,8 @@ Route::middleware(['auth', 'active', 'password.changed'])->group(function () {
         Route::get('/document-settings/image/{slot}', [DocumentSettingController::class, 'image'])->name('document-settings.image');
         Route::get('/document-settings/signatories', [DocumentSettingController::class, 'signatories'])->name('document-settings.signatories');
         Route::put('/document-settings/signatories', [DocumentSettingController::class, 'updateSignatories'])->name('document-settings.signatories.update');
+        Route::get('/document-numbering', [DocumentNumberingController::class, 'index'])->name('document-numbering.index');
+        Route::put('/document-numbering', [DocumentNumberingController::class, 'update'])->name('document-numbering.update');
     });
 
     // The requesting offices every form offers.

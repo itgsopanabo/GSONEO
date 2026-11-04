@@ -178,12 +178,12 @@ class PurchaseOrderController extends Controller
 
         $poNumber = DB::transaction(function () use ($validated) {
             if ($validated['po_number_mode'] === 'manual') {
-                return DocumentNumber::manual(PurchaseOrder::query(), 'PO_Number', (int)$validated['po_number'], 'po_number', ['PO']);
+                return DocumentNumber::manual('po', (int)$validated['po_number'], 'po_number');
             }
 
             // Use the first available serial so manual numbers do not cause
             // skipped automatic numbers (e.g. 1 and 4 means the next is 2).
-            return DocumentNumber::firstFree(PurchaseOrder::query(), 'PO_Number', ['PO']);
+            return DocumentNumber::firstFree('po');
         });
 
         $oldValues = $purchase_order->only(['PO_Number', 'PO_Supplier', 'PO_Description', 'supplier_receive_date', 'status']);

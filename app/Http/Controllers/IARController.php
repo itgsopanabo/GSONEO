@@ -271,7 +271,7 @@ class IARController extends Controller
      */
     private function nextIarNumber(): string
     {
-        return DocumentNumber::next(IAR::query(), 'iar_number', ['IAR']);
+        return DocumentNumber::next('iar');
     }
 
     /**

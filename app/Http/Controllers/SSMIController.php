@@ -103,7 +103,7 @@ class SSMIController extends Controller
         $oldValues = $purchaseOrder->only(['SSMI_Number', 'fund_source']);
 
         $ssmiNumber = DB::transaction(function () use ($purchaseOrder, $validated) {
-            $candidate = DocumentNumber::next(PurchaseOrder::query(), 'SSMI_Number', ['SSMI']);
+            $candidate = DocumentNumber::next('ssmi');
 
             // Saved inside the transaction, so the lock above still covers it and
             // two people numbering at once cannot be handed the same number.

@@ -387,11 +387,9 @@ class PurchaseRequestController extends Controller
         // In one transaction so the lock taken while picking the number holds
         // until it is saved.
         $poNumber = DB::transaction(function () use ($validated, $purchaseOrder, $purchaseRequest) {
-            $others = PurchaseOrder::query()->whereKeyNot($purchaseOrder->id);
-
             $poNumber = $validated['po_number_mode'] === 'manual'
-                ? DocumentNumber::manual($others, 'PO_Number', (int)$validated['po_number'], 'po_number', ['PO'])
-                : DocumentNumber::firstFree($others, 'PO_Number', ['PO']);
+                ? DocumentNumber::manual('po', (int)$validated['po_number'], 'po_number', ignoreId: $purchaseOrder->id)
+                : DocumentNumber::firstFree('po', ignoreId: $purchaseOrder->id);
 
             $purchaseOrder->update([
                 'PO_Number' => $poNumber,
@@ -414,7 +412,7 @@ class PurchaseRequestController extends Controller
     private function generatePrNumber(): string
     {
         // Shares one series with encoded requests (EncodingController).
-        return DocumentNumber::next(PurchaseRequest::query(), 'pr_number', ['PR', 'EPR']);
+        return DocumentNumber::next('pr');
     }
 
     /**
