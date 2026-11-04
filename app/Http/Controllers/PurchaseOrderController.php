@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DocumentNumber;
 use App\Models\AuditLog;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
@@ -11,7 +12,6 @@ use App\Services\ProcurementStatusChange;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use function Pest\Laravel\json;
 use function Termwind\render;
@@ -171,40 +171,18 @@ class PurchaseOrderController extends Controller
     {
         $validated = $request->validate([
             'po_number_mode' => 'required|in:auto,manual',
-            'po_number' => 'required_if:po_number_mode,manual|nullable|integer|min:1|max:99999',
+            'po_number' => 'required_if:po_number_mode,manual|nullable|integer|min:1|max:9999',
             'supplier' => 'required|string|max:255',
         ]);
 
         $poNumber = DB::transaction(function () use ($validated) {
-            $year = now()->year;
-
             if ($validated['po_number_mode'] === 'manual') {
-                $seq = (int)$validated['po_number'];
-                $poNumber = sprintf('PO-%d-%05d', $year, $seq);
-
-                if (PurchaseOrder::where('PO_Number', $poNumber)->exists()) {
-                    throw ValidationException::withMessages([
-                        'po_number' => "PO number {$poNumber} already exists.",
-                    ]);
-                }
-
-                return $poNumber;
+                return DocumentNumber::manual(PurchaseOrder::query(), 'PO_Number', (int)$validated['po_number'], 'po_number', ['PO']);
             }
 
-            // Use the first available sequence so manual numbers do not cause
+            // Use the first available serial so manual numbers do not cause
             // skipped automatic numbers (e.g. 1 and 4 means the next is 2).
-            $usedSequences = PurchaseOrder::where('PO_Number', 'like', "PO-{$year}-%")
-                ->lockForUpdate()
-                ->pluck('PO_Number')
-                ->map(fn(string $number) => (int)preg_replace('/^.*-/', '', $number))
-                ->flip();
-
-            $nextSeq = 1;
-            while ($usedSequences->has($nextSeq)) {
-                $nextSeq++;
-            }
-
-            return sprintf('PO-%d-%05d', $year, $nextSeq);
+            return DocumentNumber::firstFree(PurchaseOrder::query(), 'PO_Number', ['PO']);
         });
 
         $oldValues = $purchase_order->only(['PO_Number', 'PO_Supplier', 'supplier_receive_date', 'status']);

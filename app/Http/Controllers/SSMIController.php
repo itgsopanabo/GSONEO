@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DocumentNumber;
 use App\Models\AuditLog;
 use App\Models\PurchaseOrder;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -102,20 +103,7 @@ class SSMIController extends Controller
         $oldValues = $purchaseOrder->only(['SSMI_Number', 'fund_source']);
 
         $ssmiNumber = DB::transaction(function () use ($purchaseOrder, $validated) {
-            $year = now()->year;
-
-            $lastSSMI = PurchaseOrder::where('SSMI_Number', 'like', "SSMI-{$year}-%")
-                ->lockForUpdate()
-                ->orderByRaw("CAST(SUBSTRING(SSMI_Number, -4) AS UNSIGNED) DESC")
-                ->first();
-
-            $nextSeq = $lastSSMI ? ((int) substr($lastSSMI->SSMI_Number, -4)) + 1 : 1;
-
-            do {
-                $candidate = sprintf('SSMI-%d-%04d', $year, $nextSeq);
-                $exists = PurchaseOrder::where('SSMI_Number', $candidate)->exists();
-                $nextSeq++;
-            } while ($exists);
+            $candidate = DocumentNumber::next(PurchaseOrder::query(), 'SSMI_Number', ['SSMI']);
 
             // Saved inside the transaction, so the lock above still covers it and
             // two people numbering at once cannot be handed the same number.

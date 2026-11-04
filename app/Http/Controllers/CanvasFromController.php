@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DocumentNumber;
 use App\Models\AuditLog;
 use App\Models\CanvasForms;
 use App\Models\PurchaseRequest;
@@ -181,13 +182,9 @@ class CanvasFromController extends Controller
 
     private function nextCanvasNumber(): string
     {
-        $lastNumber = CanvasForms::where('CF_Number', 'like', 'CANVAS-%')
-            ->lockForUpdate()
-            ->pluck('CF_Number')
-            ->map(fn(string $number) => (int)preg_replace('/^CANVAS-/', '', $number))
-            ->max();
-
-        return 'CANVAS-' . str_pad(($lastNumber ?? 0) + 1, 6, '0', STR_PAD_LEFT);
+        // The old CANVAS-000001 numbers carry no year, so they can't count
+        // towards a year's serials; the new ones start at 0001.
+        return DocumentNumber::next(CanvasForms::query(), 'CF_Number');
     }
 
     private function streamCanvasForms(array $documentIds, string $prNumber)

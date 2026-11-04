@@ -695,8 +695,8 @@ export default function Index({purchaseOrders}) {
                         <input
                             type="number"
                             min="1"
-                            max="99999"
-                            placeholder="e.g. 12 becomes PO-2026-00012"
+                            max="9999"
+                            placeholder={`e.g. 12 becomes ${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-0012`}
                             value={poForm.po_number}
                             onChange={(e) => setPoForm({...poForm, po_number: e.target.value})}
                             className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"

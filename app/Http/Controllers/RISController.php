@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DocumentNumber;
 use App\Models\AuditLog;
 use App\Models\IAR;
 use App\Models\PurchaseOrder;
@@ -94,20 +95,7 @@ class RISController extends Controller
         $oldValues = $purchaseOrder->only(['RIS_Number']);
 
         $risNumber = DB::transaction(function () use ($purchaseOrder) {
-            $year = now()->year;
-
-            $lastRIS = PurchaseOrder::where('RIS_Number', 'like', "RIS-{$year}-%")
-                ->lockForUpdate()
-                ->orderByRaw("CAST(SUBSTRING(RIS_Number, -4) AS UNSIGNED) DESC")
-                ->first();
-
-            $nextSeq = $lastRIS ? ((int)substr($lastRIS->RIS_Number, -4)) + 1 : 1;
-
-            do {
-                $candidate = sprintf('RIS-%d-%04d', $year, $nextSeq);
-                $exists = PurchaseOrder::where('RIS_Number', $candidate)->exists();
-                $nextSeq++;
-            } while ($exists);
+            $candidate = DocumentNumber::next(PurchaseOrder::query(), 'RIS_Number', ['RIS']);
 
             // Saved inside the transaction, so the lock above still covers it and
             // two people issuing at once cannot be handed the same number.
