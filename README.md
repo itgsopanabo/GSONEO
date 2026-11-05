@@ -54,9 +54,11 @@ The **GSO Information System** is an internal web application built for the Gene
 
 **Prerequisites:** Docker and Docker Compose installed on your machine.
 
+**Branches:** `staging` is where new work goes and is tested. `main` is production and only receives `staging` through a pull request. See *Updating the application* in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 ```bash
-# Clone the repository
-git clone <repository-url>
+# Clone the repository (staging for development; the live server uses main)
+git clone -b staging <repository-url>
 cd gso-information-system
 
 # Copy environment file and configure database credentials

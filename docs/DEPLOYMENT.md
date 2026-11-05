@@ -468,6 +468,26 @@ Do it on a spare machine, not the live one. A backup that has never been restore
 
 ## 11. Updating the application
 
+### Branches
+
+The repository has two long-lived branches:
+
+| Branch | What it is | Runs on |
+|---|---|---|
+| `staging` | All new work lands here first, to be tested | Development PCs, and a test server if there is one |
+| `main` | Production: only what has passed testing on `staging` | The live server, `C:\gsoneo` |
+
+1. **Commit and push changes to `staging`.** Don't commit to `main` directly.
+2. **Test on `staging`.** Run it locally or on a test server, ideally against a copy of the live database (see section 10).
+3. **Release** by opening a pull request from `staging` into `main` on GitHub, then merging it. The pull request lists everything that is about to go live.
+4. **Update the live server** with the steps below. It stays on `main`, so `git pull` brings in exactly what was merged.
+
+A fix needed on production urgently also goes through `staging` first, then into `main` the same way, so the two branches never drift apart.
+
+To set up a test server, follow this guide with `git clone -b staging <repository-url>`. Use its own `.env` and database, never the live ones.
+
+### Update steps
+
 ```powershell
 cd C:\gsoneo
 docker compose exec app php artisan down --retry=60
