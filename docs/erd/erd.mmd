@@ -12,6 +12,20 @@ erDiagram
         varchar user_agent "nullable"
         timestamp created_at
     }
+    calendar_events {
+        bigint id PK
+        varchar title
+        text description "nullable"
+        varchar category
+        date starts_on
+        date ends_on "nullable"
+        time start_time "nullable"
+        time end_time "nullable"
+        int created_by_emp_id FK "nullable"
+        int updated_by_emp_id FK "nullable"
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
     canvasForms {
         bigint id PK
         varchar CF_Number
@@ -24,11 +38,23 @@ erDiagram
         timestamp created_at "nullable"
         timestamp updated_at "nullable"
     }
+    department_signatory_set {
+        bigint signatory_set_id PK, FK
+        bigint department_id PK, FK
+    }
     departments {
         bigint id PK
         varchar Department_Name UK
         varchar Department_Code UK
         varchar Department_Desc "nullable"
+        tinyint is_active
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    document_settings {
+        bigint id PK
+        varchar key UK
+        text value "nullable"
         timestamp created_at "nullable"
         timestamp updated_at "nullable"
     }
@@ -36,7 +62,17 @@ erDiagram
         bigint id PK
         varchar iar_number
         varchar invoice_number "nullable"
+        date invoice_date "nullable"
+        varchar delivery_status "nullable"
         varchar PO_Number FK
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    iar_items {
+        bigint id PK
+        bigint iar_id FK
+        bigint purchase_request_item_id FK
+        int quantity_received
         timestamp created_at "nullable"
         timestamp updated_at "nullable"
     }
@@ -65,7 +101,10 @@ erDiagram
         bigint id PK
         varchar PO_Number UK "nullable"
         varchar PO_Supplier "nullable"
+        text PO_Description "nullable"
         datetime PO_Date "nullable"
+        datetime received_at "nullable"
+        int received_by_emp_id FK "nullable"
         varchar PR_Number FK, UK
         int poNumbered_by FK "nullable"
         varchar RIS_Number "nullable"
@@ -79,10 +118,24 @@ erDiagram
         varchar released_to_department "nullable"
         text release_remarks "nullable"
         int ssmiNumbered_by "nullable"
+        varchar fund_source "nullable"
         int status FK
+        varchar delivery_status "nullable"
         int cancelled_by_emp_id FK "nullable"
         datetime cancelled_at "nullable"
         text cancellation_reason "nullable"
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    purchase_order_tags {
+        bigint id PK
+        bigint purchase_order_id FK
+        bigint tracker_tag_id FK
+        text note "nullable"
+        int tagged_by_emp_id FK "nullable"
+        datetime resolved_at "nullable"
+        int resolved_by_emp_id FK "nullable"
+        text resolution_note "nullable"
         timestamp created_at "nullable"
         timestamp updated_at "nullable"
     }
@@ -119,6 +172,7 @@ erDiagram
         datetime encoded_at "nullable"
         datetime declined_At "nullable"
         datetime cancelled_at "nullable"
+        json signatory_set_ids "nullable"
     }
     record_classes {
         bigint id PK
@@ -161,10 +215,42 @@ erDiagram
         timestamp created_at "nullable"
         timestamp updated_at "nullable"
     }
+    saved_queries {
+        bigint id PK
+        varchar name
+        varchar description "nullable"
+        text sql
+        tinyint is_shared
+        int created_by_emp_id FK
+        int run_count
+        datetime last_run_at "nullable"
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    signatory_sets {
+        bigint id PK
+        varchar document
+        varchar name
+        tinyint is_default
+        json signers
+        json fixed "nullable"
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
     status {
         bigint id PK
         int status_code UK
         varchar status_desc
+        timestamp created_at "nullable"
+        timestamp updated_at "nullable"
+    }
+    tracker_tags {
+        bigint id PK
+        varchar name UK
+        varchar description "nullable"
+        varchar color
+        tinyint holds_order
+        tinyint is_active
         timestamp created_at "nullable"
         timestamp updated_at "nullable"
     }
@@ -176,23 +262,36 @@ erDiagram
         bigint role_id FK
         bigint status_id FK
         varchar password
+        timestamp temporary_password_expires_at "nullable"
         varchar remember_token "nullable"
         timestamp created_at "nullable"
         timestamp updated_at "nullable"
     }
+    users |o--o{ calendar_events : "created_by_emp_id"
+    users |o--o{ calendar_events : "updated_by_emp_id"
+    departments ||--o{ department_signatory_set : "department_id"
+    signatory_sets ||--o{ department_signatory_set : "signatory_set_id"
     purchase_order ||--o{ iar : "PO_Number"
+    iar ||--o{ iar_items : "iar_id"
+    purchase_request_items ||--o{ iar_items : "purchase_request_item_id"
     permissions ||--o{ permission_role : "permission_id"
     role ||--o{ permission_role : "role_id"
     users |o--o{ purchase_order : "cancelled_by_emp_id"
     users |o--o{ purchase_order : "poNumbered_by"
     purchase_requests ||--o| purchase_order : "PR_Number"
+    users |o--o{ purchase_order : "received_by_emp_id"
     users |o--o{ purchase_order : "released_by_emp_id"
     users |o--o{ purchase_order : "risNumbered_by"
     status ||--o{ purchase_order : "status"
+    purchase_order ||--o{ purchase_order_tags : "purchase_order_id"
+    users |o--o{ purchase_order_tags : "resolved_by_emp_id"
+    users |o--o{ purchase_order_tags : "tagged_by_emp_id"
+    tracker_tags ||--o{ purchase_order_tags : "tracker_tag_id"
     purchase_requests ||--o{ purchase_request_items : "purchase_request_id"
     users |o--o{ purchase_requests : "cancelled_by_emp_id"
     status ||--o{ purchase_requests : "status"
     users |o--o{ purchase_requests : "verify_by_emp_id"
     record_classes ||--o{ records : "record_class_id"
+    users ||--o{ saved_queries : "created_by_emp_id"
     role ||--o{ users : "role_id"
     status ||--o{ users : "status_id"

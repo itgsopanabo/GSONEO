@@ -100,7 +100,7 @@ Dates are Asia/Manila time, as everywhere in GSONEO (DOCUMENTATION.md §1, "Date
 - Header: "Report of Purchase Orders Issued", the period, and the office **(A9)**.
 - Column headers in two rows: "PO Number" and "PR Number" span their Year · Month · No. cells.
 - The header row repeats on every page; the total prints on the last page.
-- Signature slots: "Prepared by" and "Certified correct by", added under `signatories` in `config/documents.php` **(A10)**.
+- Signatures: "Prepared by" and "Certified correct by". The report gets its own entry under `signatories` in `config/documents.php` with these two as its starting signers, plus a "Default" set added in its migration, so admins can change or add signers on PDF Signatories **(A10)**. The report covers many requests, so it prints the default set (`Signatories::for('po_report', null)`) and has no per-request picker.
 
 **CSV:** the same rows, with the sub-columns as separate columns (`PO Year`, `PO Month`, `PO No.`, …), so it opens cleanly in Excel. GSONEO has no spreadsheet library, so CSV comes first.
 

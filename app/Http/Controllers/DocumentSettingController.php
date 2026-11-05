@@ -108,68 +108,6 @@ class DocumentSettingController extends Controller
         return back()->with('success', 'Document branding saved. New PDFs will use it.');
     }
 
-    /** Signatories: the names and positions printed in each document's signature blocks. */
-    public function signatories(): Response
-    {
-        return Inertia::render('DocumentSettings/Signatories', [
-            'documents' => DocumentBranding::signatories(),
-        ]);
-    }
-
-    public function updateSignatories(Request $request): RedirectResponse
-    {
-        $rules = [];
-        foreach (config('documents.signatories') as $document => [, $slots]) {
-            foreach (array_keys($slots) as $slot) {
-                $rules["signatories.{$document}.{$slot}.name"] = ['nullable', 'string', 'max:120'];
-                $rules["signatories.{$document}.{$slot}.position"] = ['nullable', 'string', 'max:120'];
-            }
-        }
-
-        $validated = $request->validate($rules, [], collect($rules)->mapWithKeys(fn ($rule, $key) => [
-            $key => str_ends_with($key, '.name') ? 'name' : 'position',
-        ])->all());
-
-        $before = DocumentBranding::signatories();
-
-        // Keep only known slots, trimmed; a blank name stays blank on purpose.
-        $values = collect($before)->map(fn ($document, $key) => collect($document['slots'])->map(fn ($slot, $slotKey) => [
-            'name' => trim((string) data_get($validated, "signatories.{$key}.{$slotKey}.name")),
-            'position' => trim((string) data_get($validated, "signatories.{$key}.{$slotKey}.position")),
-        ])->all())->all();
-
-        $changed = [];
-        foreach ($values as $key => $slots) {
-            foreach ($slots as $slotKey => $slot) {
-                $old = $before[$key]['slots'][$slotKey];
-                if ($slot['name'] !== $old['name'] || $slot['position'] !== $old['position']) {
-                    $changed[] = [
-                        'what' => "{$before[$key]['label']} — {$old['label']}",
-                        'old' => trim("{$old['name']}, {$old['position']}", ', '),
-                        'new' => trim("{$slot['name']}, {$slot['position']}", ', '),
-                    ];
-                }
-            }
-        }
-
-        if (! $changed) {
-            return back()->with('success', 'No changes to save.');
-        }
-
-        DocumentBranding::saveSignatories($values);
-
-        $this->audit(
-            'document_signatories_updated',
-            new DocumentSetting,
-            'Updated signatories: '.collect($changed)->pluck('what')->join('; '),
-            collect($changed)->pluck('old', 'what')->all(),
-            collect($changed)->pluck('new', 'what')->all(),
-            ['auditable_id' => null],
-        );
-
-        return back()->with('success', 'Signatories saved. New PDFs will print them.');
-    }
-
     /** An uploaded image, for the preview on the settings screen. */
     public function image(string $slot): StreamedResponse
     {

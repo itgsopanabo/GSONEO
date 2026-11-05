@@ -29,12 +29,12 @@ class AppServiceProvider extends ServiceProvider
         Vite::prefetch(concurrency: 3);
 
         // Every generated PDF prints the letterhead, footer and watermark set
-        // on the Document Branding screen, and the names on the Signatories one.
-        // Partials inherit them from their document instead of reading them again.
+        // on the Document Branding screen. Partials inherit them from their
+        // document instead of reading them again. Signers are per request, so
+        // each controller passes its own (App\Services\Signatories).
         View::composer('pdf.*', function ($view) {
             if (! array_key_exists('branding', $view->getData())) {
                 $view->with('branding', DocumentBranding::forPdf());
-                $view->with('signatories', DocumentBranding::signatories());
             }
         });
 

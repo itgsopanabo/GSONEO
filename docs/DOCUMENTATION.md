@@ -68,7 +68,7 @@ The app ran on UTC until September 2026, so everything stored before then read e
 | `app/Policies` | Model policies (`RecordsPolicy`) |
 | `app/Services` | Domain logic shared by controllers, including `DocumentBranding` for PDF letterheads |
 | `config/permissions.php` | Permission catalogue and each role's starting access |
-| `config/documents.php` | Default letterhead, footer, watermark and signatories for generated PDFs |
+| `config/documents.php` | Default letterhead, footer and watermark for generated PDFs, and the documents that have signer sets (their starting signers and who may choose a request's set) |
 | `config/dashboard.php` | Which dashboard widgets each permission unlocks |
 | `config/Users.php` | Admin role, active status code, default password |
 | `resources/js/Components/DasboardComponents` | Dashboard widgets |
@@ -259,7 +259,7 @@ Access is **permission-based**. Each user has one role (`users.role_id`), and ea
 | | `permissions.manage` | Roles & Permissions screen |
 | | `procurement.override` | Cancel a request or order, and move either to another status |
 | | `items.manage` | Items catalogue |
-| | `documents.manage` | Document Branding and PDF Signatories: logos, letterhead, footer, watermark and signature names on generated PDFs |
+| | `documents.manage` | Document Branding and PDF Signatories: logos, letterhead, footer and watermark on generated PDFs, and each document's signer sets and the offices linked to them |
 | | `docs.view` | Docs page: this documentation and the ERD viewer |
 | Motor Pool | `motorpool.view` | Motor Pool (module not built yet) |
 
@@ -459,7 +459,8 @@ Passwords are never written to `old_values` or `new_values`.
 | `password_changed` | `RequiredPasswordChangeController` |
 | `permissions_updated` | `RolePermissionController` |
 | `document_branding_updated` | `DocumentSettingController`; the description names the settings changed, and `old_values` / `new_values` hold their before and after |
-| `document_signatories_updated` | `DocumentSettingController`; the description names the signature blocks changed |
+| `signatory_set_created`, `signatory_set_updated`, `signatory_set_deleted` | `SignatorySetController`; the description names the set, its document and what changed |
+| `signatory_set_chosen` | `SignatoryChoiceController`; a request's document was switched to another signer set, or back to automatic |
 
 ---
 
@@ -514,23 +515,38 @@ The screen has an approximate live preview. **Open a sample PDF** prints a two-p
 
 ### Signatories
 
-**Administration → PDF Signatories** (`document-settings.signatories`, `/document-settings/signatories`, same `documents.manage` permission, and a tab on the Document Branding screen) sets the name and position printed in each signature block:
+**Administration → PDF Signatories** (`document-settings.signatories`, `/document-settings/signatories`, same `documents.manage` permission, and a tab on the Document Branding screen) keeps each document's **signer sets**. A set is a named list of the people who sign that document. For example, an IAR could have "Default", "IT Equipment" (signed by the IT inspectors) and "Vehicles" (signed by the motorpool).
 
-| Document | Signature blocks |
-|---|---|
-| Purchase Request | Certified by (City Budget Office), Cash Availability, Approved by |
-| Canvass Form | Very truly yours |
-| Inspection and Acceptance Report | Inspected by, Received and accepted by |
-| SSMI | Prepared by, Certified by, Posted in the SLC by/date |
+| Document | Default set | Kept apart from the list |
+|---|---|---|
+| Purchase Request | Cash Availability, Approved by | Certified by (City Budget Office), in the budget box |
+| Canvass Form | Very truly yours | — |
+| Inspection and Acceptance Report | Inspected by, Received and accepted by | — |
+| SSMI | Prepared by, Certified by, Posted in the SLC by/date | — |
 
-- **An empty name prints a blank line** to sign by hand; the position still prints beneath it.
+- **Each set has 1–6 signers** (`documents.max_signers`), each with its own label, name and position, in print order. The PDFs print them three to a row and wrap onto more rows. Four signers print as two rows of two.
+- **A new set starts as a copy of the default**, so only what differs needs changing.
+- **Offices.** A set can be linked to requesting offices. Their requests print with it automatically. An office can be linked to only one set per document.
+- **One set per document is the default.** It is used when nothing else applies, and it can't be removed until another set is made the default.
+- **An empty name prints a blank line** to sign by hand. The position still prints beneath it.
 - **Names print as typed**, with titles and suffixes (`ENGR.`, `CPA`). Some templates also set them in capitals.
-- **Signatures that belong to the record are not here:** the PR's "Requested by" (the requesting department) and the Canvass form's "Canvass By" (the canvasser) come from the record itself.
+- **Signatures that belong to the record are not in the sets.** The PR's "Requested by" (the requesting department) always prints first. The Canvass form's "Canvass By" (the canvasser) comes from the canvass.
 - **The Leave form and Locator Slip** keep their signatories in their own templates.
 
-The slots and their defaults are listed under `signatories` in `config/documents.php`, and saved values live in one JSON row, `document_settings.signatories`. `DocumentBranding::signatories()` merges the two and returns `document => [label, slots => slot => [label, name, position]]`. Templates read `$signatories['ssmi']['slots']['prepared_by']['name']`, usually through a local `$sig`. Every save writes a `document_signatories_updated` audit entry listing the blocks that changed, with their old and new values.
+**Which set prints** (`App\Services\Signatories::for`):
 
-To add a signature block: add the slot to the document in the config, then print it in the template. It appears on the screen with its default.
+1. the set chosen on the request, then
+2. the set linked to the request's requesting office, then
+3. the document's default set, and finally
+4. the config defaults, if the table is empty.
+
+**Choosing a set on a request.** A **Signers** picker sits beside the print button on Purchase Requests, Canvass (in the canvass list and in the print dialog), Inspection & Acceptance, and SSMI. "Automatic (…)" names the set the office rule picks. The choice is saved on the request at once (`purchase_requests.signatory_set_ids`, document ⇒ set id) and applies to every later print and reprint. Anyone who can print the document can change it: the permission is under `permission` for each document in `config/documents.php`. The IAR and SSMI use the choice of the order's request. Removing a set sends requests that chose it back to automatic.
+
+**Storage.** Sets are rows in `signatory_sets` (`document`, `name`, `is_default`, `signers` JSON list, `fixed` JSON for placements the layout keeps apart). Office links are in `department_signatory_set`. Controllers pass the resolved set to each template as `$signers`. Templates loop over `$signers->signers` and read fixed placements with `$signers->fixedSigner('budget_officer')`. The migration `2026_11_05_000000_create_signatory_sets` copied the names saved on the old one-list screen into each document's "Default" set. The old `document_settings.signatories` row is no longer read.
+
+**Audit.** Creating, editing and removing sets writes `signatory_set_created`, `signatory_set_updated` and `signatory_set_deleted`. Choosing a set on a request writes `signatory_set_chosen` against the request.
+
+To add a document: give it an entry under `signatories` in `config/documents.php`, pass `Signatories::for('<document>', $purchaseRequest)` to its template as `signers`, loop over the signers there, and add a default set, either in a migration or with **Add a signer set** on the screen.
 
 ### How the templates use it
 

@@ -46,7 +46,7 @@
 | Supplier, PO and delivery dates | `purchase_order` (`PO_Supplier`, `PO_Date`, `received_at`) and `iar.invoice_date` | Date acquired and the source of each property |
 | Departments | `departments` (`Department_Code`, `Department_Name`) | Where property is, who holds it |
 | Number generators | Highest + 1 under `lockForUpdate` | The same pattern for property, PAR and ICS numbers |
-| PDF letterhead and signatories | `DocumentBranding`, `config/documents.php` | RPCPPE, RPCSP, PAR, ICS and property card PDFs |
+| PDF letterhead and signatories | `DocumentBranding`, `Signatories` (signer sets), `config/documents.php` | RPCPPE, RPCSP, PAR, ICS and property card PDFs |
 | Audit trail | `audit_log`, `App\LogsAudit` | Every property event |
 
 **Missing:**
@@ -187,7 +187,7 @@ IAR (300) ──┬─ consumable lines → RIS (400) → SSMI (500) → release
 
 - A PAR or ICS lists one or more properties, for one accountable officer, on one date.
 - Issuing it adds an `issued` event to each property and sets `officer_id`, `department_code` and `status = issued`.
-- Its PDF uses the shared letterhead. Signature slots: "Received by" (the officer) and "Issued by" (the property officer), added under `signatories` in `config/documents.php`.
+- Its PDF uses the shared letterhead. Signatures: "Received by" (the officer) and "Issued by" (the property officer). "Received by" comes from the PAR or ICS itself. "Issued by" is a signer set: an entry under `signatories` in `config/documents.php`, with a "Default" set added in the migration.
 - A wrong PAR is voided (the number stays spent) and a new one is issued.
 
 ---
@@ -279,7 +279,7 @@ Use COA's official layout; confirm the version the auditor expects **(A13)**.
 - Approved by: the head of the agency or an authorized representative.
 - Verified by: the COA representative.
 
-The last two are new slots under `signatories` in `config/documents.php`.
+The last two are a signer set: an entry under `signatories` in `config/documents.php`, with a "Default" set added in the migration. The report isn't tied to one request, so it prints the default set.
 
 **Format:** dompdf, legal landscape (the table is wide), with the shared letterhead partials; page breaks per account and per accountable officer. Plus an Excel or CSV export. GSONEO has no spreadsheet library yet: CSV first, or add one such as `openspout/openspout` **(A12)**.
 

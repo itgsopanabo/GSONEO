@@ -343,7 +343,7 @@ This covers PR create, verify, canvass, PO number, IAR, RIS, SSMI, release, canc
 
 ## 9. Data privacy (RA 10173)
 
-Personal data GSONEO holds: employee IDs and names (`users`), collectors' names (`released_to`), signatory names (document settings), supplier names that may be sole proprietors (`PO_Supplier`), and IP addresses and browsers in `audit_log`.
+Personal data GSONEO holds: employee IDs and names (`users`), collectors' names (`released_to`), signatory names (`signatory_sets`), supplier names that may be sole proprietors (`PO_Supplier`), and IP addresses and browsers in `audit_log`.
 
 - **The kiosk shows none of it.** The view in section 3.1 has no person's name.
 - Bring in the city's Data Protection Officer: lawful basis, Privacy Impact Assessment, and whether the system must be registered with the NPC **(A12)**.

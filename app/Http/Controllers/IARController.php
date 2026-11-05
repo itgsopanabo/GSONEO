@@ -7,6 +7,7 @@ use App\LogsAudit;
 use App\Models\IAR;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
+use App\Services\Signatories;
 use Barryvdh\DomPDF\Facade\Pdf;
 use DomainException;
 use Illuminate\Http\Request;
@@ -147,6 +148,7 @@ class IARController extends Controller
             'iarNumber'      => $iar->iar_number,
             'deliveryStatus' => $iar->delivery_status,
             'items'          => $this->linesOn($iar, $purchaseOrder),
+            'signers'        => Signatories::for('iar', $purchaseOrder->purchaseRequest),
         ]);
 
         return $pdf->stream("{$iar->iar_number}.pdf");

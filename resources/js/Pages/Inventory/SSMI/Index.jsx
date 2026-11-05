@@ -1,6 +1,7 @@
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.jsx";
 import {Head, Link, router, usePage} from '@inertiajs/react';
 import Modal from '@/Components/Modal';
+import SignerSetPicker from '@/Components/SignerSetPicker.jsx';
 import {HeldNotice, isHeldByTags, MissingTagsPanel, OrderTagBadges, TagMissingButton, personName} from "@/Components/MissingTags.jsx";
 import {
     Detail, Pipeline, QueueTabs, StatusBadge, peso, qty, slipLines, totalOf, useOrderQueue,
@@ -414,6 +415,7 @@ export default function Index({purchaseOrders, focusOrder, filters, counts, fund
                                             {sentOn ? `Sent to Outgoing. Now at ${STATUS_MAP[selected.status]?.label ?? 'a later stage'}.` : 'This order is not at the SSMI stage.'}
                                         </p>
                                     )}
+                                    <SignerSetPicker document="ssmi" prNumber={selected.PR_Number}/>
                                     {numbered && (
                                         <a
                                             href={documentUrl(selected)}

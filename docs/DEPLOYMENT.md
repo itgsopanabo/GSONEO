@@ -496,6 +496,12 @@ The migration `2026_10_27_000000_replace_default_password_with_one_time_password
 2. Issue each of them a one-time password from **User List → Issue one-time password**. If a locked account is the only admin, use `docker compose exec app php artisan user:one-time-password <emp_id>` instead.
 3. Remove `USER_DEFAULT_PASSWORD` from `.env`; it is no longer read. Add `USER_TEMP_PASSWORD_HOURS` if 72 hours does not suit you.
 
+### 11.2 The update that added signer sets
+
+The migration `2026_11_05_000000_create_signatory_sets` replaces the single list of names on **PDF Signatories** with named signer sets per document. It copies the names and positions saved on the old screen into a "Default" set for each document, so PDFs print the same signers as before. There is nothing to do after `migrate`.
+
+To use the new sets afterwards, open **Administration → PDF Signatories**. Add a set, for example "IT Equipment" for the IAR, and link it to the offices whose requests it should sign. See *Signatories* in the technical documentation.
+
 ---
 
 ## 12. Monitoring and what happens when something fails

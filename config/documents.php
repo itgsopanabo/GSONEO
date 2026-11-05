@@ -53,32 +53,63 @@ return [
     |---------------------------------------------------------------------------
     | Signatories
     |---------------------------------------------------------------------------
-    | document => [label, slots => [slot => [label, default name, default position]]]
+    | The documents whose signature blocks are kept as named signer sets on the
+    | Signatories screen (table signatory_sets). Each document has:
     |
-    | The names and positions printed in each document's signature blocks, set on
-    | the Signatories screen. An empty name prints a blank line to sign on.
-    | Signatures that belong to the record itself — who requested a PR, who
-    | canvassed it — come from the record and are not listed here. The Leave
-    | form and Locator Slip keep their own signatories in their templates.
+    |   label       shown on the Signatories screen and the set picker
+    |   permission  who may choose a request's set: whoever prints the document
+    |   signers     slot => [label, default name, default position], the list
+    |               the first "Default" set starts from; sets add or remove
+    |               signers freely after that
+    |   fixed       placements the layout keeps apart from the list (the PR's
+    |               budget certification box), same shape
+    |   note        what the screen says about signers the record supplies
+    |
+    | Which set prints: the one chosen on the request, else the set linked to
+    | its requesting office, else the document's default set. An empty name
+    | prints a blank line to sign on. The Leave form and Locator Slip keep
+    | their own signatories in their templates.
     */
+    'max_signers' => 6,
+
     'signatories' => [
-        'purchase_request' => ['Purchase Request', [
-            'budget_officer' => ['Certified by (City Budget Office)', 'JOVEN M. SEPE, CPA, MBA', 'City Budget Officer I'],
-            'cash_availability' => ['Cash Availability', '', ''],
-            'approved_by' => ['Approved by', '', ''],
-        ]],
-        'canvass_form' => ['Canvass Form', [
-            'signatory' => ['Very truly yours', 'ENGR. RANDEL B. PANAYANGAN', 'CGDH-CGSO'],
-        ]],
-        'iar' => ['Inspection and Acceptance Report', [
-            'inspected_by' => ['Inspected by', '', 'Inspection Officer / Committee'],
-            'accepted_by' => ['Received and accepted by', '', 'Supply and/or Property Custodian'],
-        ]],
-        'ssmi' => ['SSMI', [
-            'prepared_by' => ['Prepared by', 'NUELO R. SUMATRA', 'Supply Officer II'],
-            'certified_by' => ['Certified by', 'ANNIE FE A. BATILONG', 'Supply Officer III'],
-            'posted_by' => ['Posted in the SLC by/date', '', 'Accounting Clerk'],
-        ]],
+        'purchase_request' => [
+            'label' => 'Purchase Request',
+            'permission' => 'pr.view',
+            'note' => 'Printed after "Requested by", which comes from the request itself.',
+            'fixed' => [
+                'budget_officer' => ['Certified by (City Budget Office)', 'JOVEN M. SEPE, CPA, MBA', 'City Budget Officer I'],
+            ],
+            'signers' => [
+                'cash_availability' => ['Cash Availability', '', ''],
+                'approved_by' => ['Approved by', '', ''],
+            ],
+        ],
+        'canvass_form' => [
+            'label' => 'Canvass Form',
+            'permission' => 'pr.canvass',
+            'note' => 'Printed beside the dealer and canvasser lines, which come from the canvass itself.',
+            'signers' => [
+                'signatory' => ['Very truly yours', 'ENGR. RANDEL B. PANAYANGAN', 'CGDH-CGSO'],
+            ],
+        ],
+        'iar' => [
+            'label' => 'Inspection and Acceptance Report',
+            'permission' => 'inventory.iar',
+            'signers' => [
+                'inspected_by' => ['Inspected by', '', 'Inspection Officer / Committee'],
+                'accepted_by' => ['Received and accepted by', '', 'Supply and/or Property Custodian'],
+            ],
+        ],
+        'ssmi' => [
+            'label' => 'SSMI',
+            'permission' => 'inventory.ssmi',
+            'signers' => [
+                'prepared_by' => ['Prepared by', 'NUELO R. SUMATRA', 'Supply Officer II'],
+                'certified_by' => ['Certified by', 'ANNIE FE A. BATILONG', 'Supply Officer III'],
+                'posted_by' => ['Posted in the SLC by/date', '', 'Accounting Clerk'],
+            ],
+        ],
     ],
 
 ];

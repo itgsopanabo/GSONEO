@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Support\DocumentNumber;
 use App\Models\AuditLog;
 use App\Models\PurchaseOrder;
+use App\Services\Signatories;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -216,6 +217,7 @@ class SSMIController extends Controller
                 ->join('-'),
             'procurementMode' => $purchaseRequest?->mode_of_procurement,
             'sourceOfFund' => $purchaseOrder->fund_source,
+            'signers' => Signatories::for('ssmi', $purchaseRequest),
         ]);
 
         $pdf->setOptions(['defaultFont' => 'DejaVu Sans']);

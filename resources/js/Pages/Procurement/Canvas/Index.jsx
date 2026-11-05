@@ -4,6 +4,7 @@ import {STATUS_MAP} from '@/Constants/statusConfig.js';
 import {useEffect, useMemo, useState} from "react";
 import {PanelRightClose, PanelRightOpen, Search} from "lucide-react";
 import DateInput from "@/Components/DateInput.jsx";
+import SignerSetPicker from "@/Components/SignerSetPicker.jsx";
 import {formatDate} from "@/Utils/formatDate.js";
 
 /**
@@ -367,7 +368,7 @@ export default function Index({purchaseRequests}) {
                                     <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                                         Canvasses for this PR
                                     </p>
-
+                                    <SignerSetPicker document="canvass_form" prNumber={selected.pr_number}/>
                                 </div>
                                 {canvasses.length === 0 ? (
                                     <p className="px-5 py-5 text-xs text-gray-400">No Canvas form has been generated yet.</p>
@@ -576,7 +577,8 @@ export default function Index({purchaseRequests}) {
                         </div>
                     </div>
 
-                    <div className="flex justify-end gap-3">
+                    <div className="flex flex-wrap items-center justify-end gap-3">
+                        {selected && <SignerSetPicker document="canvass_form" prNumber={selected.pr_number} className="mr-auto"/>}
                         <button
                             type="button"
                             onClick={closeCanvasModal}

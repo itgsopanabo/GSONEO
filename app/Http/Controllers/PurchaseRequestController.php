@@ -10,6 +10,7 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
 use App\Services\ProcurementCancellation;
 use App\Services\ProcurementStatusChange;
+use App\Services\Signatories;
 use App\Services\PrTableParser;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Request;
@@ -168,7 +169,11 @@ class PurchaseRequestController extends Controller
             return $item->quantity * $item->estimated_unit_cost;
         });
 
-        $pdf = Pdf::loadView('pdf.purchase-request', compact('purchaseRequest', 'grandTotal'));
+        $pdf = Pdf::loadView('pdf.purchase-request', [
+            'purchaseRequest' => $purchaseRequest,
+            'grandTotal' => $grandTotal,
+            'signers' => Signatories::for('purchase_request', $purchaseRequest),
+        ]);
         $pdf->setOptions(['defaultFont' => 'DejaVu Sans']);
 
         return $pdf->stream("PR-{$purchaseRequest->pr_number}.pdf");

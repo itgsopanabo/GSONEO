@@ -6,6 +6,7 @@ use App\Support\DocumentNumber;
 use App\Models\AuditLog;
 use App\Models\CanvasForms;
 use App\Models\PurchaseRequest;
+use App\Services\Signatories;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -196,7 +197,10 @@ class CanvasFromController extends Controller
 
         abort_if($documents->isEmpty(), 404, 'Canvas form not found.');
 
-        return Pdf::loadView('pdf.canvas-form', compact('documents'))
+        // Every form here belongs to the same request, so they share its signers.
+        $signers = Signatories::for('canvass_form', $documents->first()->purchaseRequest);
+
+        return Pdf::loadView('pdf.canvas-form', compact('documents', 'signers'))
             ->stream("Canvas-Forms-PR-{$prNumber}.pdf");
     }
 
