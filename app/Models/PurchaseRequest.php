@@ -43,6 +43,12 @@ class PurchaseRequest extends Model
         'mode_of_procurement',
         'encoded_by',
         'encoded_at',
+        'signatory_set_ids',
+    ];
+
+    /** document => signer set chosen for this request's PDFs; absent means automatic (Signatories::for). */
+    protected $casts = [
+        'signatory_set_ids' => 'array',
     ];
 
     /** The trail identifies a request by its PR number, not its row id. */

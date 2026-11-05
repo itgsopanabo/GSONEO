@@ -44,6 +44,8 @@ class HandleInertiaRequests extends Middleware
                 'error' => fn() => $request->session()->get('error'),
                 'po_number' => fn() => $request->session()->get('po_number'),
                 'created_pr' => fn() => $request->session()->get('created_pr'),
+                // A one-time password an admin just issued, shown to them once.
+                'temporary_password' => fn() => $request->session()->get('temporary_password'),
             ],
             'csrf_token' => csrf_token(),
             // The tags offered when marking an order as missing something. Only
@@ -53,8 +55,8 @@ class HandleInertiaRequests extends Middleware
             'trackerTags' => fn () => $request->user()?->hasAnyPermission(MissingTrackerController::PERMISSIONS)
                 ? TrackerTag::options()
                 : [],
-            // True while the user is still on the shared default password; the
-            // layout then shows the "set up a new password" dialog.
+            // True while the user is still on a one-time password from an admin;
+            // the layout then shows the "set up a new password" dialog.
             'mustChangePassword' => fn () => RequirePasswordChange::isRequired($request),
         ];
     }

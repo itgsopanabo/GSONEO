@@ -17,7 +17,7 @@ class PurchaseOrder extends Model
      * TODO add the SSMI_Number, SSMI_Date, ssmiNumbered_by for SSMI Integration
      */
     protected $fillable = [
-        'PO_Number', 'PO_Supplier', 'PO_Date', 'PR_Number', 'supplier_receive_date', 'poNumbered_by', 'status', 'RIS_Number', 'RIS_Date', 'risNumbered_by',
+        'PO_Number', 'PO_Supplier', 'PO_Description', 'PO_Date', 'PR_Number', 'supplier_receive_date', 'poNumbered_by', 'status', 'RIS_Number', 'RIS_Date', 'risNumbered_by',
         // IAR::DELIVERY_PARTIAL / DELIVERY_COMPLETE, null until the first IAR.
         'delivery_status',
         // When the delivery was accepted on the Incoming page, and by whom.

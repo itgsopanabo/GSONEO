@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 
 /**
  * @method static create(array $array)
@@ -54,7 +55,47 @@ class User extends Authenticatable
     {
         return [
             'password' => 'hashed',
+            'temporary_password_expires_at' => 'datetime',
         ];
+    }
+
+    /** No look-alikes (0/O, 1/l/I), so a password read aloud or copied by hand survives. */
+    private const TEMPORARY_PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+
+    /**
+     * Replace this account's password with a random one-time password, save,
+     * and return it so an admin can hand it over once. It works until the user
+     * chooses their own (RequirePasswordChange) or the hours in
+     * config Users.temporary_password_hours pass. A new remember token stops an
+     * old "keep me signed in" cookie from bringing the previous login back.
+     */
+    public function issueTemporaryPassword(): string
+    {
+        $alphabet = self::TEMPORARY_PASSWORD_ALPHABET;
+        $password = '';
+
+        for ($i = 0; $i < 12; $i++) {
+            $password .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+
+        $this->forceFill([
+            'password' => $password,
+            'remember_token' => Str::random(60),
+            'temporary_password_expires_at' => now()->addHours(config('Users.temporary_password_hours')),
+        ])->save();
+
+        return $password;
+    }
+
+    /** Still on a one-time password from an admin, which must be replaced. */
+    public function hasTemporaryPassword(): bool
+    {
+        return $this->temporary_password_expires_at !== null;
+    }
+
+    public function temporaryPasswordExpired(): bool
+    {
+        return $this->hasTemporaryPassword() && $this->temporary_password_expires_at->isPast();
     }
 
     public function role(): BelongsTo

@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DocumentNumber;
 use App\Models\AuditLog;
 use App\Models\PurchaseOrder;
+use App\Services\Signatories;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -16,6 +18,9 @@ class SSMIController extends Controller
 {
     /** RIS issued: the SSMI is numbered here, then the order is sent to Outgoing. */
     private const STATUS_FOR_SSMI = 500;
+
+    /** The fund_source choice for a fund not in config('documents.fund_sources'). */
+    private const OTHER_FUND = 'other';
 
     /** Stages an order is at once its SSMI has gone to Outgoing. */
     private const PAST_SSMI = [550, 600];
@@ -79,11 +84,26 @@ class SSMIController extends Controller
 
     public function generateNumber(Request $request, PurchaseOrder $purchaseOrder)
     {
+        // "other" means a fund not in the list: its code is typed in and stored
+        // as is, the same way a listed code is, so the SSMI prints it alike.
         $validated = $request->validate([
-            'fund_source' => ['required', Rule::in(array_keys(config('documents.fund_sources')))],
+            'fund_source' => ['required', Rule::in([...array_keys(config('documents.fund_sources')), self::OTHER_FUND])],
+            'fund_source_code' => [
+                'nullable', 'required_if:fund_source,' . self::OTHER_FUND, 'string', 'max:20',
+                // It prints inside the office code ("CAGRO-GF-1"), so no spaces.
+                'regex:/^[A-Za-z0-9%&.\/-]+$/',
+            ],
         ], [
             'fund_source.required' => 'Choose the source of fund the supplies are charged to.',
+            'fund_source_code.required_if' => 'Enter the code of the source of fund.',
+            'fund_source_code.regex' => 'Use letters, numbers and % & . / - only, with no spaces.',
+        ], [
+            'fund_source_code' => 'fund code',
         ]);
+
+        if ($validated['fund_source'] === self::OTHER_FUND) {
+            $validated['fund_source'] = strtoupper(trim($validated['fund_source_code']));
+        }
 
         if ($purchaseOrder->SSMI_Number) {
             return redirect()
@@ -102,20 +122,7 @@ class SSMIController extends Controller
         $oldValues = $purchaseOrder->only(['SSMI_Number', 'fund_source']);
 
         $ssmiNumber = DB::transaction(function () use ($purchaseOrder, $validated) {
-            $year = now()->year;
-
-            $lastSSMI = PurchaseOrder::where('SSMI_Number', 'like', "SSMI-{$year}-%")
-                ->lockForUpdate()
-                ->orderByRaw("CAST(SUBSTRING(SSMI_Number, -4) AS UNSIGNED) DESC")
-                ->first();
-
-            $nextSeq = $lastSSMI ? ((int) substr($lastSSMI->SSMI_Number, -4)) + 1 : 1;
-
-            do {
-                $candidate = sprintf('SSMI-%d-%04d', $year, $nextSeq);
-                $exists = PurchaseOrder::where('SSMI_Number', $candidate)->exists();
-                $nextSeq++;
-            } while ($exists);
+            $candidate = DocumentNumber::next('ssmi');
 
             // Saved inside the transaction, so the lock above still covers it and
             // two people numbering at once cannot be handed the same number.
@@ -210,6 +217,7 @@ class SSMIController extends Controller
                 ->join('-'),
             'procurementMode' => $purchaseRequest?->mode_of_procurement,
             'sourceOfFund' => $purchaseOrder->fund_source,
+            'signers' => Signatories::for('ssmi', $purchaseRequest),
         ]);
 
         $pdf->setOptions(['defaultFont' => 'DejaVu Sans']);

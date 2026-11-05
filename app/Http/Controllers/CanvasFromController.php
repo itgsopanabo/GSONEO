@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DocumentNumber;
 use App\Models\AuditLog;
 use App\Models\CanvasForms;
 use App\Models\PurchaseRequest;
+use App\Services\Signatories;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -181,13 +183,9 @@ class CanvasFromController extends Controller
 
     private function nextCanvasNumber(): string
     {
-        $lastNumber = CanvasForms::where('CF_Number', 'like', 'CANVAS-%')
-            ->lockForUpdate()
-            ->pluck('CF_Number')
-            ->map(fn(string $number) => (int)preg_replace('/^CANVAS-/', '', $number))
-            ->max();
-
-        return 'CANVAS-' . str_pad(($lastNumber ?? 0) + 1, 6, '0', STR_PAD_LEFT);
+        // The old CANVAS-000001 numbers carry no year, so they can't count
+        // towards a year's serials; the new ones start at 0001.
+        return DocumentNumber::next('canvass');
     }
 
     private function streamCanvasForms(array $documentIds, string $prNumber)
@@ -199,7 +197,10 @@ class CanvasFromController extends Controller
 
         abort_if($documents->isEmpty(), 404, 'Canvas form not found.');
 
-        return Pdf::loadView('pdf.canvas-form', compact('documents'))
+        // Every form here belongs to the same request, so they share its signers.
+        $signers = Signatories::for('canvass_form', $documents->first()->purchaseRequest);
+
+        return Pdf::loadView('pdf.canvas-form', compact('documents', 'signers'))
             ->stream("Canvas-Forms-PR-{$prNumber}.pdf");
     }
 

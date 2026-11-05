@@ -23,9 +23,10 @@ return [
     'selectable_status_codes' => [900, 901, 902],
 
     /*
-     * The shared starting password handed to new or reset accounts. Anyone
-     * signed in with it must choose their own before they can change anything.
+     * How long a one-time password issued by an admin keeps working. The user
+     * must replace it at first sign-in; after this many hours it stops working
+     * and an admin has to issue a new one.
      */
-    'default_password' => env('USER_DEFAULT_PASSWORD', 'gso123'),
+    'temporary_password_hours' => (int) env('USER_TEMP_PASSWORD_HOURS', 72),
 
 ];

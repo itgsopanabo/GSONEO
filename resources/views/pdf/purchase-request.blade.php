@@ -141,6 +141,11 @@
             border-right: none;
         }
 
+        /* A set with more than two signers wraps onto further rows. */
+        .signatory-table tr.sig-row-next th {
+            border-top: 1px solid #000000;
+        }
+
         .sig-name {
             font-weight: bold;
             text-transform: uppercase;
@@ -171,7 +176,7 @@
 </head>
 <body>
 @include('pdf.partials.foreground')
-@php $sig = $signatories['purchase_request']['slots']; @endphp
+@php $budget = $signers->fixedSigner('budget_officer'); @endphp
 
 <div class="pr-container">
 
@@ -310,10 +315,10 @@
             <div style="text-align: center; margin-top: 10px;">
                 <div style="font-size: 9px; margin-bottom: 15px; text-align: left; padding-left: 5px;">Certified By:</div>
                 <div style="font-weight: bold; text-transform: uppercase; text-decoration: underline;">
-                    @if(filled($sig['budget_officer']['name'])){{ $sig['budget_officer']['name'] }}@else&nbsp;@endif
+                    @if(filled($budget['name'])){{ $budget['name'] }}@else&nbsp;@endif
                 </div>
                 <div style="font-size: 9px; margin-top: 2px; color: #000000;">
-                    {{ $sig['budget_officer']['position'] }}
+                    {{ $budget['position'] }}
                 </div>
             </div>
         </div>
@@ -324,36 +329,40 @@
             <strong>Purpose:</strong> {{ $purchaseRequest->remarks_or_notes ?? '' }}
         </div>
 
+        @php
+            // "Requested by" comes from the request; the signer set follows it, wrapping onto more rows.
+            $cells = collect([[
+                'label' => 'Requested by',
+                'name' => $purchaseRequest->requester_department,
+                'position' => $purchaseRequest->requester_designation ?? 'Requestor',
+                'date' => $purchaseRequest->created_at ? $purchaseRequest->created_at->format('M d, Y') : '',
+            ]])->concat($signers->signers);
+            $columns = \App\Models\SignatorySet::columns($cells->count());
+        @endphp
         <table class="signatory-table">
-            <thead>
-            <tr>
-                <th style="width: 33.33%;">Requested by:</th>
-                <th style="width: 33.33%;">Cash Availability:</th>
-                <th style="width: 33.34%;">Approved by:</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr>
-                <td>
-                    <div class="sig-name" style="text-decoration: none;">&nbsp;</div>
-                    <div class="sig-name">@if(filled($purchaseRequest->requester_department)){{ $purchaseRequest->requester_department }}@else&nbsp;@endif</div>
-                    <div class="sig-title">{{ $purchaseRequest->requester_designation ?? 'Requestor' }}</div>
-                    <div class="sig-date" style="margin-top: 5px;">Date: {{ $purchaseRequest->created_at ? $purchaseRequest->created_at->format('M d, Y') : '' }}</div>
-                </td>
-                <td>
-                    <div class="sig-name" style="text-decoration: none;">&nbsp;</div>
-                    <div class="sig-name">@if(filled($sig['cash_availability']['name'])){{ $sig['cash_availability']['name'] }}@else&nbsp;@endif</div>
-                    <div class="sig-title">{{ $sig['cash_availability']['position'] }}</div>
-                    <div class="sig-date" style="margin-top: 5px;">Date: ________________________</div>
-                </td>
-                <td>
-                    <div class="sig-name" style="text-decoration: none;">&nbsp;</div>
-                    <div class="sig-name">@if(filled($sig['approved_by']['name'])){{ $sig['approved_by']['name'] }}@else&nbsp;@endif</div>
-                    <div class="sig-title">{{ $sig['approved_by']['position'] }}</div>
-                    <div class="sig-date" style="margin-top: 5px;">Date: ________________________</div>
-                </td>
-            </tr>
-            </tbody>
+            @foreach($cells->chunk($columns) as $row)
+                <tr class="{{ $loop->first ? '' : 'sig-row-next' }}">
+                    @foreach($row as $cell)
+                        <th style="width: {{ round(100 / $columns, 2) }}%;">{{ filled($cell['label']) ? $cell['label'].':' : '' }}</th>
+                    @endforeach
+                    @for($i = $row->count(); $i < $columns; $i++)
+                        <th style="width: {{ round(100 / $columns, 2) }}%;">&nbsp;</th>
+                    @endfor
+                </tr>
+                <tr>
+                    @foreach($row as $cell)
+                        <td>
+                            <div class="sig-name" style="text-decoration: none;">&nbsp;</div>
+                            <div class="sig-name">@if(filled($cell['name'])){{ $cell['name'] }}@else&nbsp;@endif</div>
+                            <div class="sig-title">{{ $cell['position'] }}</div>
+                            <div class="sig-date" style="margin-top: 5px;">Date: {{ $cell['date'] ?? '________________________' }}</div>
+                        </td>
+                    @endforeach
+                    @for($i = $row->count(); $i < $columns; $i++)
+                        <td>&nbsp;</td>
+                    @endfor
+                </tr>
+            @endforeach
         </table>
     </div>
 

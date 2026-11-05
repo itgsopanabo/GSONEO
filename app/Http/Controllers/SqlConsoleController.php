@@ -4,14 +4,17 @@ namespace App\Http\Controllers;
 
 use App\LogsAudit;
 use App\Models\SavedQuery;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -31,6 +34,9 @@ class SqlConsoleController extends Controller
     private const CONNECTION = 'mysql_readonly';
 
     private const ROW_LIMIT = 1000;
+
+    /** A PDF this long is already a few hundred pages; past it, dompdf runs out of memory. */
+    private const PDF_ROW_LIMIT = 3000;
 
     private const TIMEOUT_MS = 8000;
 
@@ -77,19 +83,32 @@ class SqlConsoleController extends Controller
             : null;
 
         $sql = $saved ? $saved->sql : trim((string) $request->input('sql', ''));
+        $export = in_array($request->input('export'), ['csv', 'pdf'], true) ? $request->input('export') : null;
         $result = null;
         $error = null;
 
         if ($sql !== '') {
             try {
                 $this->guard($sql);
-                $result = $this->execute($sql, $request->input('export') === 'csv');
+                $result = $this->execute($sql, match ($export) {
+                    'csv' => null,
+                    'pdf' => self::PDF_ROW_LIMIT,
+                    default => self::ROW_LIMIT,
+                });
 
                 $this->record($sql, $result['count']);
                 $saved?->forceFill(['run_count' => $saved->run_count + 1, 'last_run_at' => now()])->saveQuietly();
 
-                if ($request->input('export') === 'csv') {
-                    return $this->csv($result, $saved?->name);
+                if ($export === 'pdf' && $result['truncated']) {
+                    throw new \RuntimeException('The result has more than '.number_format(self::PDF_ROW_LIMIT).' rows, too many for a PDF. Narrow the query, or download the CSV.');
+                }
+
+                if ($export === 'csv') {
+                    return $this->csv($result, $this->heading($request, $saved));
+                }
+
+                if ($export === 'pdf') {
+                    return $this->pdf($result, $this->heading($request, $saved), $request);
                 }
             } catch (Throwable $e) {
                 $error = $e->getMessage();
@@ -99,7 +118,7 @@ class SqlConsoleController extends Controller
 
         return Inertia::render('CustomReport/SqlConsole', [
             'savedQueries' => $this->savedQueriesFor($request->user()),
-            'loadedQuery' => $saved?->only(['id', 'name']),
+            'loadedQuery' => $saved?->only(['id', 'name', 'description']),
             'sql'         => $sql,
             'headers'     => $result['headers'] ?? [],
             'rows'        => $result['rows'] ?? [],
@@ -253,15 +272,16 @@ class SqlConsoleController extends Controller
         }
     }
 
-    private function execute(string $sql, bool $full): array
+    /** $limit null runs the query whole (the CSV); otherwise one extra row is read to tell whether it was cut. */
+    private function execute(string $sql, ?int $limit): array
     {
         $trimmed = rtrim($sql, "; \t\n\r");
 
         // Wrapping rather than appending LIMIT — appending breaks on queries
         // that already have one, and on UNION.
-        $limited = $full
+        $limited = $limit === null
             ? $trimmed
-            : "SELECT * FROM ({$trimmed}) AS console_result LIMIT " . (self::ROW_LIMIT + 1);
+            : "SELECT * FROM ({$trimmed}) AS console_result LIMIT " . ($limit + 1);
 
         $connection = DB::connection(self::CONNECTION);
 
@@ -272,7 +292,7 @@ class SqlConsoleController extends Controller
         $rows = $connection->select($limited);
         $elapsed = (int) round((microtime(true) - $started) * 1000);
 
-        $truncated = ! $full && count($rows) > self::ROW_LIMIT;
+        $truncated = $limit !== null && count($rows) > $limit;
 
         if ($truncated) {
             array_pop($rows);
@@ -335,22 +355,82 @@ class SqlConsoleController extends Controller
         ]);
     }
 
-    private function csv(array $result, ?string $name = null): StreamedResponse
+    /**
+     * The report's title and description, printed at the top of the PDF and CSV.
+     * The page always sends both, so a field cleared there stays blank; a bare
+     * link to a saved query uses the query's own name and description.
+     */
+    private function heading(Request $request, ?SavedQuery $saved): array
     {
-        // A saved query downloads under its own name: "monthly-pos-2026-10-20-0930.csv".
-        $file = ($name ? \Illuminate\Support\Str::slug($name) : 'query').'-'.now()->format('Y-m-d-Hi').'.csv';
+        $title = $request->exists('title') ? (string) $request->input('title') : (string) $saved?->name;
+        $description = $request->exists('description') ? (string) $request->input('description') : (string) $saved?->description;
 
-        return response()->streamDownload(function () use ($result) {
+        return [
+            'title' => Str::limit(trim($title), 150, ''),
+            'description' => Str::limit(trim($description), 1000, ''),
+        ];
+    }
+
+    /** "po-report-for-coa-2026-10-20-0930.pdf", from the title, else "query-…". */
+    private function fileName(array $heading, string $extension): string
+    {
+        $base = Str::slug($heading['title']) ?: 'query';
+
+        return $base.'-'.now()->format('Y-m-d-Hi').'.'.$extension;
+    }
+
+    private function csv(array $result, array $heading): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($result, $heading) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
 
-            fputcsv($out, $result['headers']);
+            // Title and description on rows of their own, a blank row, then the table.
+            $lines = array_filter([$heading['title'], $heading['description']], fn ($line) => $line !== '');
+            foreach ($lines as $line) {
+                fputcsv($out, [$line], escape: '');
+            }
+            if ($lines) {
+                fputcsv($out, [], escape: '');
+            }
+
+            fputcsv($out, $result['headers'], escape: '');
 
             foreach ($result['rows'] as $row) {
-                fputcsv($out, array_values((array) $row));
+                fputcsv($out, array_values((array) $row), escape: '');
             }
 
             fclose($out);
-        }, $file, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }, $this->fileName($heading, 'csv'), ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * The result on the shared letterhead. Wide results turn the page: up to six
+     * columns fit letter portrait, up to ten letter landscape, more go on legal landscape.
+     */
+    private function pdf(array $result, array $heading, Request $request): Response
+    {
+        $columns = count($result['headers']);
+        [$paper, $orientation] = match (true) {
+            $columns <= 6 => ['letter', 'portrait'],
+            $columns <= 10 => ['letter', 'landscape'],
+            default => ['legal', 'landscape'],
+        };
+
+        $user = $request->user();
+
+        return Pdf::loadView('pdf.sql-report', [
+            'title' => $heading['title'],
+            'description' => $heading['description'],
+            'headers' => $result['headers'],
+            'rows' => $result['rows'],
+            'count' => $result['count'],
+            'compact' => $columns > 10,
+            'generatedAt' => now()->format('F j, Y g:i A'),
+            'generatedBy' => $user ? trim("{$user->emp_fname} {$user->emp_lname}") : null,
+        ])
+            ->setPaper($paper, $orientation)
+            ->setOptions(['defaultFont' => 'DejaVu Sans'])
+            ->download($this->fileName($heading, 'pdf'));
     }
 }

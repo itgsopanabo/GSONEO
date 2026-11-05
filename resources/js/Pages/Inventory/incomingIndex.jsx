@@ -11,12 +11,12 @@ import {ArrowRight, Inbox, PackageCheck, PackageOpen, Search} from "lucide-react
 /* ------------------------------------------------------------------ *
  * Constants
  * ------------------------------------------------------------------ */
-/** PO issued, delivery not yet accepted. */
+/** PO issued, not yet accepted into Inventory. */
 const STATUS_INCOMING = 230;
 const STATUS_FOR_INSPECTION = 300;
 
 const TABS = [
-    {key: 'awaiting', label: 'Awaiting Delivery'},
+    {key: 'awaiting', label: 'For Acceptance'},
     {key: 'accepted', label: 'Accepted'},
 ];
 
@@ -99,8 +99,8 @@ export default function IncomingIndex({purchaseOrders, focusOrder, filters, coun
                             Incoming Requests
                         </h1>
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Purchase orders out with suppliers. Accept a delivery when the items arrive to send them
-                            for inspection.
+                            Purchase orders waiting to be accepted into Inventory. Accept a PO when its items arrive to
+                            send them for inspection.
                         </p>
                     </div>
                     <QueueTabs tabs={TABS} active={view} counts={counts} onChange={switchTab}/>
@@ -169,14 +169,14 @@ export default function IncomingIndex({purchaseOrders, focusOrder, filters, coun
                                 <div className="px-6 py-16 text-center">
                                     <Inbox className="h-8 w-8 mx-auto text-gray-300 dark:text-gray-600 mb-3"/>
                                     <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                        {filters?.search ? 'No matches' : view === 'accepted' ? 'No deliveries accepted yet' : 'No deliveries expected'}
+                                        {filters?.search ? 'No matches' : view === 'accepted' ? 'No POs accepted yet' : 'No POs waiting for acceptance'}
                                     </p>
                                     <p className="mt-1 text-[11px] text-gray-500">
                                         {filters?.search
                                             ? 'Try a different search.'
                                             : view === 'accepted'
-                                                ? 'Orders appear here once their delivery is accepted.'
-                                                : 'Orders arrive here once a PO number is generated.'}
+                                                ? 'POs appear here once they are accepted into Inventory.'
+                                                : 'POs appear here once a PO number is generated.'}
                                     </p>
                                 </div>
                             )}
@@ -242,7 +242,7 @@ export default function IncomingIndex({purchaseOrders, focusOrder, filters, coun
                                     {!awaiting && (
                                         <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5 p-5">
                                             <p className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider mb-4">
-                                                Delivery Accepted
+                                                Accepted into Inventory
                                             </p>
                                             {selected.received_at ? (
                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -263,6 +263,11 @@ export default function IncomingIndex({purchaseOrders, focusOrder, filters, coun
                                         <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
                                             Order Details
                                         </p>
+                                        <div className="mb-4">
+                                            <Detail label="PO Description">
+                                                <span className="font-normal whitespace-pre-line">{selected.PO_Description || '—'}</span>
+                                            </Detail>
+                                        </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                             <Detail label="Requesting office">{office || '—'}</Detail>
                                             <Detail label="Purchase request"><span className="font-mono">{selected.PR_Number}</span></Detail>
@@ -277,13 +282,6 @@ export default function IncomingIndex({purchaseOrders, focusOrder, filters, coun
                                             <Detail label="Mode of procurement">{selected.purchase_request?.mode_of_procurement || '—'}</Detail>
                                             <Detail label="Order value"><span className="tabular-nums">{peso.format(total)}</span></Detail>
                                         </div>
-                                        {selected.purchase_request?.remarks_or_notes && (
-                                            <div className="mt-4">
-                                                <Detail label="Purpose">
-                                                    <span className="font-normal">{selected.purchase_request.remarks_or_notes}</span>
-                                                </Detail>
-                                            </div>
-                                        )}
                                     </div>
 
                                     {/* Tags matter while the order waits here; afterwards they live on the later pages. */}
@@ -361,7 +359,7 @@ export default function IncomingIndex({purchaseOrders, focusOrder, filters, coun
                                                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-full shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-600"
                                             >
                                                 <PackageOpen className="w-4 h-4"/>
-                                                Accept Delivery…
+                                                Accept into Inventory…
                                             </button>
                                         </>
                                     ) : (
@@ -391,7 +389,7 @@ export default function IncomingIndex({purchaseOrders, focusOrder, filters, coun
             <Modal show={confirming && Boolean(selected)} onClose={() => !processing && setConfirming(false)} maxWidth="md">
                 <div className="bg-white dark:bg-gray-800 p-6">
                     <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        Accept the delivery for {selected?.PO_Number}?
+                        Accept {selected?.PO_Number} into Inventory?
                     </h2>
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                         Confirm the items have arrived. The order moves to Inspection &amp; Acceptance, and today is
@@ -428,7 +426,7 @@ export default function IncomingIndex({purchaseOrders, focusOrder, filters, coun
                             disabled={processing || !canAccept}
                             className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
                         >
-                            {processing ? 'Accepting…' : 'Accept delivery'}
+                            {processing ? 'Accepting…' : 'Accept into Inventory'}
                         </button>
                     </div>
                 </div>

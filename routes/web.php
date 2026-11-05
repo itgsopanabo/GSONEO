@@ -8,6 +8,7 @@ use App\Http\Controllers\CanvasFromController;
 use App\Http\Controllers\CustomReportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocsController;
+use App\Http\Controllers\DocumentNumberingController;
 use App\Http\Controllers\DocumentSettingController;
 use App\Http\Controllers\EncodingController;
 use App\Http\Controllers\IARController;
@@ -25,6 +26,8 @@ use App\Http\Controllers\RequestMonitoringController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\RISController;
 use App\Http\Controllers\SqlConsoleController;
+use App\Http\Controllers\SignatoryChoiceController;
+use App\Http\Controllers\SignatorySetController;
 use App\Http\Controllers\SSMIController;
 use App\Http\Controllers\TrackerTagController;
 use App\Http\Controllers\UserController;
@@ -53,6 +56,11 @@ Route::middleware(['auth', 'active', 'password.changed'])->group(function () {
         Route::put('/calendar-events/{calendarEvent}', [CalendarEventController::class, 'update'])->name('calendar-events.update');
         Route::delete('/calendar-events/{calendarEvent}', [CalendarEventController::class, 'destroy'])->name('calendar-events.destroy');
     });
+
+    // Which signer set a request's PDF prints with; the controller checks the
+    // document's own print permission.
+    Route::get('/signatory-choice/{document}', [SignatoryChoiceController::class, 'show'])->name('signatory-choice.show');
+    Route::put('/signatory-choice/{document}', [SignatoryChoiceController::class, 'update'])->name('signatory-choice.update');
 
     Route::get('/pls', fn() => view('pdf/pls'))->name('pls');
     Route::get('/leave', [LeaveController::class, 'create'])->name('leave');
@@ -214,7 +222,8 @@ Route::middleware(['auth', 'active', 'password.changed'])->group(function () {
 
     Route::middleware('permission:permissions.manage')->group(function () {
         Route::get('/roles-permissions', [RolePermissionController::class, 'index'])->name('permissions.index');
-        Route::put('/roles-permissions/{role}', [RolePermissionController::class, 'update'])->name('permissions.update');
+        Route::post('/roles-permissions', [RolePermissionController::class, 'store'])->name('permissions.store');
+        Route::put('/roles-permissions/{role}',[RolePermissionController::class, 'update'])->name('permissions.update');
     });
 
     Route::middleware('permission:docs.view')->group(function () {
@@ -230,8 +239,12 @@ Route::middleware(['auth', 'active', 'password.changed'])->group(function () {
         Route::post('/document-settings', [DocumentSettingController::class, 'update'])->name('document-settings.update');
         Route::get('/document-settings/preview', [DocumentSettingController::class, 'preview'])->name('document-settings.preview');
         Route::get('/document-settings/image/{slot}', [DocumentSettingController::class, 'image'])->name('document-settings.image');
-        Route::get('/document-settings/signatories', [DocumentSettingController::class, 'signatories'])->name('document-settings.signatories');
-        Route::put('/document-settings/signatories', [DocumentSettingController::class, 'updateSignatories'])->name('document-settings.signatories.update');
+        Route::get('/document-settings/signatories', [SignatorySetController::class, 'index'])->name('document-settings.signatories');
+        Route::post('/document-settings/signatories', [SignatorySetController::class, 'store'])->name('document-settings.signatories.store');
+        Route::put('/document-settings/signatories/{signatorySet}', [SignatorySetController::class, 'update'])->name('document-settings.signatories.update');
+        Route::delete('/document-settings/signatories/{signatorySet}', [SignatorySetController::class, 'destroy'])->name('document-settings.signatories.destroy');
+        Route::get('/document-numbering', [DocumentNumberingController::class, 'index'])->name('document-numbering.index');
+        Route::put('/document-numbering', [DocumentNumberingController::class, 'update'])->name('document-numbering.update');
     });
 
     // The requesting offices every form offers.

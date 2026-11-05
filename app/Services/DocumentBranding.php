@@ -23,8 +23,6 @@ class DocumentBranding
 
     public const DIRECTORY = 'branding';
 
-    private const SIGNATORIES_KEY = 'signatories';
-
     /** Saved values merged over the defaults, image slots holding their stored path. */
     public static function settings(): array
     {
@@ -40,32 +38,6 @@ class DocumentBranding
         }
 
         return $settings;
-    }
-
-    /**
-     * Every document's signatories: document => slot => [label, name, position].
-     *
-     * Saved as one JSON row under `signatories`; any slot never saved takes its
-     * default from config('documents.signatories').
-     */
-    public static function signatories(): array
-    {
-        $saved = json_decode(self::saved()[self::SIGNATORIES_KEY] ?? '[]', true) ?: [];
-
-        return collect(config('documents.signatories'))->map(fn ($document, $key) => [
-            'label' => $document[0],
-            'slots' => collect($document[1])->map(fn ($slot, $slotKey) => [
-                'label' => $slot[0],
-                'name' => (string) ($saved[$key][$slotKey]['name'] ?? $slot[1]),
-                'position' => (string) ($saved[$key][$slotKey]['position'] ?? $slot[2]),
-            ])->all(),
-        ])->all();
-    }
-
-    /** Store names and positions, as document => slot => [name, position]. */
-    public static function saveSignatories(array $signatories): void
-    {
-        self::save([self::SIGNATORIES_KEY => json_encode($signatories)]);
     }
 
     /** Store the given keys and forget the cached copy. */

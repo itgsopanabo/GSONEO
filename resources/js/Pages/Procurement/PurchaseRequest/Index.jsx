@@ -4,6 +4,7 @@ import {ArrowRight, Check, Copy, FileText, Plus, Printer, Search, ShieldCheck, X
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.jsx';
 import Modal from '@/Components/Modal';
 import ItemDescription from '@/Components/ItemDescripiton.jsx';
+import SignerSetPicker from '@/Components/SignerSetPicker.jsx';
 import {Detail, QueueTabs, StatusBadge, peso, qty, useOrderQueue} from '@/Components/Inventory/OrderParts.jsx';
 import {formatDate, formatDateTime, parseDate} from '@/Utils/formatDate.js';
 
@@ -245,6 +246,7 @@ export default function Index({purchaseRequests, focusOrder, filters, tabs = [],
                                             <Printer className="w-3.5 h-3.5"/>
                                             PDF
                                         </a>
+                                        <SignerSetPicker document="purchase_request" prNumber={selected.pr_number}/>
                                         {can('monitoring.view') && (
                                             <Link
                                                 href={route('request-monitoring.show', selected.id)}

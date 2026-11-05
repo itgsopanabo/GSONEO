@@ -213,6 +213,11 @@
             border-right: none;
         }
 
+        /* A set with more than three signers wraps onto further rows. */
+        .sig-table tr.sig-row-next td {
+            border-top: 1px solid #000;
+        }
+
         .sig-label {
             font-size: 9px;
         }
@@ -255,7 +260,6 @@
 </head>
 <body>
 @include('pdf.partials.foreground')
-@php $sig = $signatories['ssmi']['slots']; @endphp
 
 {{-- ============ LETTERHEAD ============ --}}
 @include('pdf.partials.letterhead', ['class' => 'ssmi-letterhead'])
@@ -378,21 +382,29 @@
 </table>
 
 {{-- ============ SIGNATORIES ============ --}}
+@php
+    $columns = \App\Models\SignatorySet::columns(count($signers->signers));
+@endphp
 <table class="sig-table">
-    <tr>
-        @foreach(['prepared_by' => ['Prepared by:', '34%'], 'certified_by' => ['Certified by:', '34%'], 'posted_by' => ['Posted in the SLC by/date:', '32%']] as $slot => [$label, $width])
-            <td style="width:{{ $width }};">
-                <div class="sig-label">{{ $label }}</div>
-                {{-- No name set: a line to sign on. --}}
-                @if(filled($sig[$slot]['name']))
-                    <div class="sig-name">{{ $sig[$slot]['name'] }}</div>
-                @else
-                    <div class="sig-line"></div>
-                @endif
-                <div class="sig-pos">{{ $sig[$slot]['position'] }}</div>
-            </td>
-        @endforeach
-    </tr>
+    @foreach(collect($signers->signers)->chunk($columns) as $row)
+        <tr class="{{ $loop->first ? '' : 'sig-row-next' }}">
+            @foreach($row as $signer)
+                <td style="width:{{ round(100 / $columns, 2) }}%;">
+                    <div class="sig-label">{{ filled($signer['label']) ? $signer['label'].':' : '' }}&nbsp;</div>
+                    {{-- No name set: a line to sign on. --}}
+                    @if(filled($signer['name']))
+                        <div class="sig-name">{{ $signer['name'] }}</div>
+                    @else
+                        <div class="sig-line"></div>
+                    @endif
+                    <div class="sig-pos">{{ $signer['position'] }}</div>
+                </td>
+            @endforeach
+            @for($i = $row->count(); $i < $columns; $i++)
+                <td style="width:{{ round(100 / $columns, 2) }}%;"></td>
+            @endfor
+        </tr>
+    @endforeach
 </table>
 
 {{-- ============ NOTES ============ --}}

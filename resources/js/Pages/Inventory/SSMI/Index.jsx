@@ -1,6 +1,7 @@
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.jsx";
 import {Head, Link, router, usePage} from '@inertiajs/react';
 import Modal from '@/Components/Modal';
+import SignerSetPicker from '@/Components/SignerSetPicker.jsx';
 import {HeldNotice, isHeldByTags, MissingTagsPanel, OrderTagBadges, TagMissingButton, personName} from "@/Components/MissingTags.jsx";
 import {
     Detail, Pipeline, QueueTabs, StatusBadge, peso, qty, slipLines, totalOf, useOrderQueue,
@@ -15,6 +16,8 @@ import {ArrowRight, Check, ClipboardCheck, ExternalLink, FileText, PackageCheck,
  * ------------------------------------------------------------------ */
 const STATUS_FOR_SSMI = 500;
 const STATUS_FOR_OUTGOING = 550;
+/** Must match SSMIController::OTHER_FUND. */
+const OTHER_FUND = 'other';
 
 const TABS = [
     {key: 'pending', label: 'For SSMI'},
@@ -82,21 +85,33 @@ export default function Index({purchaseOrders, focusOrder, filters, counts, fund
     // Supplies are almost always charged to MOOE, so it is the starting choice.
     const defaultFund = 'MOOE' in fundSources ? 'MOOE' : (Object.keys(fundSources)[0] ?? '');
     const [fundSource, setFundSource] = useState(defaultFund);
+    // The code typed in when the fund is not in the list.
+    const [otherCode, setOtherCode] = useState('');
+    const [fundError, setFundError] = useState(null);
+    const fundChosen = fundSource === OTHER_FUND ? otherCode.trim() !== '' : Boolean(fundSource);
 
     function openNumber() {
         setFundSource(defaultFund);
+        setOtherCode('');
+        setFundError(null);
         setDialog('number');
     }
 
     function submit() {
         if (!selected) return;
         setProcessing(true);
-        const done = {preserveScroll: true, onFinish: () => {
-            setProcessing(false);
-            setDialog(null);
-        }};
+        // Stay open on a validation error so the message can be read and fixed.
+        const done = {
+            preserveScroll: true,
+            onSuccess: () => setDialog(null),
+            onError: (errs) => setFundError(errs.fund_source_code ?? errs.fund_source ?? null),
+            onFinish: () => setProcessing(false),
+        };
         if (dialog === 'number') {
-            router.post(route('ssmi.generateNumber', selected.PO_Number), {fund_source: fundSource}, done);
+            router.post(route('ssmi.generateNumber', selected.PO_Number), {
+                fund_source: fundSource,
+                ...(fundSource === OTHER_FUND ? {fund_source_code: otherCode.trim()} : {}),
+            }, done);
         } else {
             router.post(route('ssmi.toOutgoing', selected.id), {}, done);
         }
@@ -277,7 +292,9 @@ export default function Index({purchaseOrders, focusOrder, filters, counts, fund
                                                         </span>
                                                         <span>
                                                             · Fund: {selected.fund_source
-                                                                ? `${selected.fund_source} — ${fundSources[selected.fund_source] ?? selected.fund_source}`
+                                                                ? (fundSources[selected.fund_source]
+                                                                        ? `${selected.fund_source} — ${fundSources[selected.fund_source]}`
+                                                                        : `${selected.fund_source} (other)`)
                                                                 : 'not recorded'}
                                                         </span>
                                                     </span>
@@ -398,6 +415,7 @@ export default function Index({purchaseOrders, focusOrder, filters, counts, fund
                                             {sentOn ? `Sent to Outgoing. Now at ${STATUS_MAP[selected.status]?.label ?? 'a later stage'}.` : 'This order is not at the SSMI stage.'}
                                         </p>
                                     )}
+                                    <SignerSetPicker document="ssmi" prNumber={selected.PR_Number}/>
                                     {numbered && (
                                         <a
                                             href={documentUrl(selected)}
@@ -498,7 +516,46 @@ export default function Index({purchaseOrders, focusOrder, filters, counts, fund
                                         </span>
                                     </label>
                                 ))}
+                                <label
+                                    className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm ${fundSource === OTHER_FUND
+                                        ? 'border-emerald-500 bg-emerald-50 dark:border-emerald-500/60 dark:bg-emerald-500/10'
+                                        : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-900/40'}`}
+                                >
+                                    <input
+                                        type="radio"
+                                        name="fund_source"
+                                        value={OTHER_FUND}
+                                        checked={fundSource === OTHER_FUND}
+                                        onChange={() => setFundSource(OTHER_FUND)}
+                                        className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span>
+                                        <span className="block font-semibold text-gray-900 dark:text-white">Other</span>
+                                        <span className="block text-[11px] text-gray-500 dark:text-gray-400">Enter the fund code</span>
+                                    </span>
+                                </label>
                             </div>
+                            {fundSource === OTHER_FUND && (
+                                <div className="mt-3">
+                                    <label htmlFor="fund_source_code" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                                        Fund code
+                                    </label>
+                                    <input
+                                        id="fund_source_code"
+                                        type="text"
+                                        maxLength={20}
+                                        autoFocus
+                                        placeholder="e.g. GF"
+                                        value={otherCode}
+                                        onChange={(e) => setOtherCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
+                                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-mono uppercase text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                                    />
+                                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                        Prints on the SSMI as typed, in the office code and the SOURCE OF FUND line.
+                                    </p>
+                                </div>
+                            )}
+                            {fundError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{fundError}</p>}
                         </fieldset>
                     )}
 
@@ -514,7 +571,7 @@ export default function Index({purchaseOrders, focusOrder, filters, counts, fund
                         <button
                             type="button"
                             onClick={submit}
-                            disabled={processing || held || (dialog === 'number' && !fundSource)}
+                            disabled={processing || held || (dialog === 'number' && !fundChosen)}
                             className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
                         >
                             {processing ? 'Working…' : dialog === 'number' ? 'Generate SSMI number' : 'Send to Outgoing'}

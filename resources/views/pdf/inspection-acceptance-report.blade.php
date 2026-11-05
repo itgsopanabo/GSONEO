@@ -38,9 +38,12 @@
         }
 
         .sig-table td {
-            width: 50%;
             padding: 0 24px;
             vertical-align: top;
+        }
+
+        .sig-table tr.sig-row-next td {
+            padding-top: 24px;
         }
 
         .sig-label {
@@ -159,19 +162,26 @@
 </table>
 
 <!-- Signatories -->
-@php $sig = $signatories['iar']['slots']; @endphp
+@php
+    $columns = \App\Models\SignatorySet::columns(count($signers->signers));
+@endphp
 <table class="sig-table">
-    <tr>
-        @foreach(['inspected_by', 'accepted_by'] as $slot)
-            <td>
-                <div class="sig-label">{{ $sig[$slot]['label'] }}:</div>
-                {{-- No name set: a line to sign on. --}}
-                <div class="sig-name">@if(filled($sig[$slot]['name'])){{ $sig[$slot]['name'] }}@else&nbsp;@endif</div>
-                <div class="sig-pos">{{ $sig[$slot]['position'] }}</div>
-                <div class="sig-date">Date: ____________________</div>
-            </td>
-        @endforeach
-    </tr>
+    @foreach(collect($signers->signers)->chunk($columns) as $row)
+        <tr class="{{ $loop->first ? '' : 'sig-row-next' }}">
+            @foreach($row as $signer)
+                <td style="width: {{ round(100 / $columns, 2) }}%;">
+                    <div class="sig-label">{{ filled($signer['label']) ? $signer['label'].':' : '' }}&nbsp;</div>
+                    {{-- No name set: a line to sign on. --}}
+                    <div class="sig-name">@if(filled($signer['name'])){{ $signer['name'] }}@else&nbsp;@endif</div>
+                    <div class="sig-pos">{{ $signer['position'] }}</div>
+                    <div class="sig-date">Date: ____________________</div>
+                </td>
+            @endforeach
+            @for($i = $row->count(); $i < $columns; $i++)
+                <td style="width: {{ round(100 / $columns, 2) }}%;"></td>
+            @endfor
+        </tr>
+    @endforeach
 </table>
 
 </body>

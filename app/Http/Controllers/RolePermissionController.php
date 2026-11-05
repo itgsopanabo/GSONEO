@@ -39,6 +39,61 @@ class RolePermissionController extends Controller
         ]);
     }
 
+    public function store(Request $request): RedirectResponse
+    {
+        $request->merge([
+            'role_name' => trim((string) $request->input('role_name')),
+            'section' => trim((string) $request->input('section')),
+        ]);
+
+        $validated = $request->validate([
+            'role_name' => [
+                'required', 'string', 'max:255',
+                Rule::unique('role', 'role_name')->where('section', $request->input('section')),
+            ],
+            'section' => ['required', 'string', 'max:255'],
+            'copy_from_role_id' => ['nullable', 'integer', Rule::exists('role', 'id')],
+        ], [
+            'role_name.unique' => 'This section already has a role with that name.',
+        ]);
+
+        $role = DB::transaction(function () use ($validated) {
+            $role = Role::create([
+                'role_name' => $validated['role_name'],
+                'section' => $validated['section'],
+            ]);
+
+            if (! empty($validated['copy_from_role_id'])) {
+                $role->permissions()->sync(
+                    Role::findOrFail($validated['copy_from_role_id'])->permissions()->pluck('permissions.id')
+                );
+            }
+
+            return $role;
+        });
+
+        $source = ! empty($validated['copy_from_role_id']) ? Role::find($validated['copy_from_role_id']) : null;
+        $permissions = $role->permissions()->pluck('name')->values();
+
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'role_created',
+            'auditable_type' => Role::class,
+            'auditable_id' => $role->id,
+            'description' => "Created role {$role->role_name} ({$role->section})"
+                .($source ? ", with permissions copied from {$source->role_name} ({$source->section})" : ''),
+            'new_values' => [
+                'role_name' => $role->role_name,
+                'section' => $role->section,
+                'permissions' => $permissions,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return back()->with('success', "Role {$role->role_name} ({$role->section}) created.");
+    }
+
     public function update(Request $request, Role $role): RedirectResponse
     {
         $validated = $request->validate([

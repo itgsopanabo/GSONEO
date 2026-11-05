@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Head, router } from '@inertiajs/react';
+import { Plus } from 'lucide-react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import PrimaryButton from '@/Components/PrimaryButton';
 import SecondaryButton from '@/Components/SecondaryButton';
+import AddRoleModal from '@/Components/Permissions/AddRoleModal';
 
 const sameSet = (a, b) => a.size === b.size && [...a].every((id) => b.has(id));
 
@@ -12,6 +14,7 @@ export default function Index({ roles, permissions, ownRoleId, protectedOnOwnRol
     const saved = useMemo(() => new Set(role?.permission_ids ?? []), [role]);
     const [selected, setSelected] = useState(saved);
     const [saving, setSaving] = useState(false);
+    const [adding, setAdding] = useState(false);
 
     // Load the saved set whenever another role is picked or a save comes back.
     useEffect(() => setSelected(new Set(saved)), [saved]);
@@ -33,6 +36,13 @@ export default function Index({ roles, permissions, ownRoleId, protectedOnOwnRol
         if (id === roleId) return;
         if (dirty && !window.confirm('Discard the unsaved changes to this role?')) return;
         setRoleId(id);
+    };
+
+    // Ask before opening, so the new role can be selected without a second prompt.
+    const openAdd = () => {
+        if (dirty && !window.confirm('Discard the unsaved changes to this role?')) return;
+        setSelected(new Set(saved));
+        setAdding(true);
     };
 
     const toggle = (id) => {
@@ -63,9 +73,19 @@ export default function Index({ roles, permissions, ownRoleId, protectedOnOwnRol
     return (
         <AuthenticatedLayout
             header={
-                <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">
-                    Roles &amp; permissions
-                </h2>
+                <div className="flex items-center justify-between gap-4">
+                    <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">
+                        Roles &amp; permissions
+                    </h2>
+                    <button
+                        type="button"
+                        onClick={openAdd}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
+                    >
+                        <Plus className="h-4 w-4" />
+                        New role
+                    </button>
+                </div>
             }
         >
             <Head title="Roles & permissions" />
@@ -192,6 +212,8 @@ export default function Index({ roles, permissions, ownRoleId, protectedOnOwnRol
                     )}
                 </div>
             </div>
+
+            <AddRoleModal show={adding} onClose={() => setAdding(false)} onCreated={setRoleId} roles={roles} />
         </AuthenticatedLayout>
     );
 }

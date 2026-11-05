@@ -180,6 +180,10 @@
             font-size: 10px;
         }
 
+        .signatory-next {
+            margin-top: 14px;
+        }
+
         .bac-date {
             margin-top: 12px;
         }
@@ -203,7 +207,6 @@
 </head>
 <body>
 @include('pdf.partials.foreground')
-@php $sig = $signatories['canvass_form']['slots']; @endphp
 
 {{-- Wrapped so the first sheet stays :first-child after the footer and watermark. --}}
 <div>
@@ -336,9 +339,14 @@
                     <span class="sig-caption">Canvass By</span>
                 </td>
                 <td style="text-align: left;">
-                    Very truly yours,
-                    <div class="signatory-name">@if(filled($sig['signatory']['name'])){{ $sig['signatory']['name'] }}@else<span class="sig-line">&nbsp;</span>@endif</div>
-                    <div class="signatory-title">{{ $sig['signatory']['position'] }}</div>
+                    {{-- The set's signers, one under the other, each under its own label. --}}
+                    @foreach($signers->signers as $signer)
+                        <div class="{{ $loop->first ? '' : 'signatory-next' }}">
+                            @if(filled($signer['label'])){{ $signer['label'] }},@endif
+                            <div class="signatory-name">@if(filled($signer['name'])){{ $signer['name'] }}@else<span class="sig-line">&nbsp;</span>@endif</div>
+                            <div class="signatory-title">{{ $signer['position'] }}</div>
+                        </div>
+                    @endforeach
                     <div class="bac-date">
                         BAC Date: <u>{{ \Carbon\Carbon::parse($form->CF_bac_date)->format('F d, Y') }}</u>
                     </div>

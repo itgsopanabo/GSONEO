@@ -8,6 +8,7 @@ import SecondaryButton from '@/Components/SecondaryButton';
 import RowActionsMenu from '@/Components/RowActionsMenu.jsx';
 import SetPasswordModal from '@/Components/Users/SetPasswordModal';
 import AddUserModal from '@/Components/Users/AddUserModal';
+import TemporaryPasswordModal from '@/Components/Users/TemporaryPasswordModal';
 import { StatusBadge, initialsOf, lastSeen } from '@/Components/Users/UserBits.jsx';
 import { formatDateTime } from '@/Utils/formatDate.js';
 
@@ -42,7 +43,7 @@ function Stat({ icon: Icon, label, value, hint, active, onClick }) {
     );
 }
 
-export default function Index({ auth, users, filters, roles, statuses, defaultPassword, defaultStatusId, stats = {} }) {
+export default function Index({ auth, users, filters, roles, statuses, defaultStatusId, stats = {} }) {
     const [search, setSearch] = useState(filters.search || '');
     const [role, setRole] = useState(filters.role || '');
     const [status, setStatus] = useState(filters.status || '');
@@ -100,7 +101,7 @@ export default function Index({ auth, users, filters, roles, statuses, defaultPa
             return items;
         }
 
-        items.push({ label: 'Set password…', onSelect: () => setSettingPassword(user) });
+        items.push({ label: 'Issue one-time password…', onSelect: () => setSettingPassword(user) });
 
         const assignable = statuses.filter((s) => s.selectable !== false);
         const fixed = !assignable.some((s) => s.id === user.status_id);
@@ -303,10 +304,11 @@ export default function Index({ auth, users, filters, roles, statuses, defaultPa
                 roles={roles}
                 statuses={statuses}
                 defaultStatusId={defaultStatusId}
-                defaultPassword={defaultPassword}
             />
 
-            <SetPasswordModal user={settingPassword} onClose={() => setSettingPassword(null)} defaultPassword={defaultPassword} />
+            <SetPasswordModal user={settingPassword} onClose={() => setSettingPassword(null)} />
+
+            <TemporaryPasswordModal />
 
             <Modal show={confirming !== null} onClose={() => setConfirming(null)} maxWidth="md">
                 <div className="p-6">

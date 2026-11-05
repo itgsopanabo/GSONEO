@@ -261,6 +261,11 @@ export default function outgoingIndex({purchaseOrders, focusOrder, filters, coun
                                         <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
                                             Order and Documents
                                         </p>
+                                        <div className="mb-4">
+                                            <Detail label="PO Description">
+                                                <span className="font-normal whitespace-pre-line">{selected.PO_Description || '—'}</span>
+                                            </Detail>
+                                        </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                             <Detail label="Purchase request"><span className="font-mono">{selected.PR_Number}</span></Detail>
                                             <Detail label="Supplier">{selected.PO_Supplier || '—'}</Detail>
@@ -302,13 +307,6 @@ export default function outgoingIndex({purchaseOrders, focusOrder, filters, coun
                                                 ) : '—'}
                                             </Detail>
                                         </div>
-                                        {selected.purchase_request?.remarks_or_notes && (
-                                            <div className="mt-4">
-                                                <Detail label="Purpose">
-                                                    <span className="font-normal">{selected.purchase_request.remarks_or_notes}</span>
-                                                </Detail>
-                                            </div>
-                                        )}
                                     </div>
 
                                     {/* A released order is complete; there is nothing left to hold. */}

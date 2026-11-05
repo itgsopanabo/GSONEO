@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DocumentNumber;
 use App\Http\Requests\StorePurchaseRequestRequest;
 use App\Models\AuditLog;
 use App\Models\Departments;
@@ -9,6 +10,7 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
 use App\Services\ProcurementCancellation;
 use App\Services\ProcurementStatusChange;
+use App\Services\Signatories;
 use App\Services\PrTableParser;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Request;
@@ -17,7 +19,6 @@ use Illuminate\Support\Facades\DB;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class PurchaseRequestController extends Controller
@@ -168,7 +169,11 @@ class PurchaseRequestController extends Controller
             return $item->quantity * $item->estimated_unit_cost;
         });
 
-        $pdf = Pdf::loadView('pdf.purchase-request', compact('purchaseRequest', 'grandTotal'));
+        $pdf = Pdf::loadView('pdf.purchase-request', [
+            'purchaseRequest' => $purchaseRequest,
+            'grandTotal' => $grandTotal,
+            'signers' => Signatories::for('purchase_request', $purchaseRequest),
+        ]);
         $pdf->setOptions(['defaultFont' => 'DejaVu Sans']);
 
         return $pdf->stream("PR-{$purchaseRequest->pr_number}.pdf");
@@ -375,35 +380,35 @@ class PurchaseRequestController extends Controller
     {
         $validated = $request->validate([
             'supplier' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:1000'],
             'po_number_mode' => ['required', 'in:auto,manual'],
-            'po_number' => ['required_if:po_number_mode,manual', 'nullable', 'integer', 'min:1', 'max:99999'],
+            'po_number' => ['required_if:po_number_mode,manual', 'nullable', 'integer', 'min:1', 'max:9999'],
         ]);
 
         // The PO row was already created upstream (verifyPO / status 200 → 220).
         // Fetch it rather than making a second one.
         $purchaseOrder = PurchaseOrder::where('PR_Number', $purchaseRequest->pr_number)->firstOrFail();
 
-        if ($validated['po_number_mode'] === 'manual') {
-            $poNumber = sprintf('PO-%d-%05d', now()->year, (int)$validated['po_number']);
+        // In one transaction so the lock taken while picking the number holds
+        // until it is saved.
+        $poNumber = DB::transaction(function () use ($validated, $purchaseOrder, $purchaseRequest) {
+            $poNumber = $validated['po_number_mode'] === 'manual'
+                ? DocumentNumber::manual('po', (int)$validated['po_number'], 'po_number', ignoreId: $purchaseOrder->id)
+                : DocumentNumber::firstFree('po', ignoreId: $purchaseOrder->id);
 
-            if (PurchaseOrder::where('PO_Number', $poNumber)->whereKeyNot($purchaseOrder->id)->exists()) {
-                throw ValidationException::withMessages([
-                    'po_number' => "PO number {$poNumber} already exists.",
-                ]);
-            }
-        } else {
-            $poNumber = $this->nextPoNumber((string)now()->year);
-        }
+            $purchaseOrder->update([
+                'PO_Number' => $poNumber,
+                'PO_Supplier' => $validated['supplier'],
+                'PO_Description' => $validated['description'] ?? null,
+                'PO_Date' => now()->format('Y-m-d'), //current date,
+                'poNumbered_by' => auth()->id(),
+                'status' => 230,    // whatever follows 220 in your flow
+            ]);
 
-        $purchaseOrder->update([
-            'PO_Number' => $poNumber,
-            'PO_Supplier' => $validated['supplier'],
-            'PO_Date' => now()->format('Y-m-d'), //current date,
-            'poNumbered_by' => auth()->id(),
-            'status' => 230,    // whatever follows 220 in your flow
-        ]);
+            $purchaseRequest->update(['status' => 230]);
 
-        $purchaseRequest->update(['status' => 230]);
+            return $poNumber;
+        });
 
         return back()->with('po_number', $poNumber);
     }
@@ -411,33 +416,8 @@ class PurchaseRequestController extends Controller
 
     private function generatePrNumber(): string
     {
-        $year = now()->year;
-
-        $latest = PurchaseRequest::whereYear('created_at', $year)
-            ->lockForUpdate()
-            ->orderByDesc('id')
-            ->value('pr_number');
-
-        $sequence = $latest ? ((int)substr($latest, -4)) + 1 : 1;
-
-        return sprintf('PR-%d-%04d', $year, $sequence);
-    }
-
-    private function nextPoNumber(string $year): string
-    {
-        // Column is PO_Number. MySQL is case-insensitive about column names in SQL,
-        // but Eloquent attribute access is not — `$last->po_number` returns null.
-        $usedSequences = PurchaseOrder::where('PO_Number', 'like', "PO-{$year}-%")
-            ->pluck('PO_Number')
-            ->map(fn(string $number) => (int)preg_replace('/^.*-/', '', $number))
-            ->flip();
-
-        $next = 1;
-        while ($usedSequences->has($next)) {
-            $next++;
-        }
-
-        return 'PO-' . $year . '-' . str_pad($next, 5, '0', STR_PAD_LEFT);
+        // Shares one series with encoded requests (EncodingController).
+        return DocumentNumber::next('pr');
     }
 
     /**

@@ -2,6 +2,7 @@ import {Head, Link, router, usePage} from '@inertiajs/react';
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.jsx";
 import Modal from '@/Components/Modal';
 import DateInput from "@/Components/DateInput.jsx";
+import SignerSetPicker from "@/Components/SignerSetPicker.jsx";
 import {HeldNotice, isHeldByTags, MissingTagsPanel, OrderTagBadges, TagMissingButton, personName} from "@/Components/MissingTags.jsx";
 import {
     Detail, Pipeline, QueueTabs, StatusBadge, peso, qty, receivedByLine, useOrderQueue,
@@ -384,8 +385,11 @@ export default function IarIndex({purchaseOrders, focusOrder, filters, counts}) 
                                             <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                                                 Inspection Reports
                                             </p>
-                                            <span className="text-[11px] text-gray-400">
-                                                {iars.length} {iars.length === 1 ? 'report' : 'reports'}
+                                            <span className="flex flex-wrap items-center gap-3">
+                                                <SignerSetPicker document="iar" prNumber={selected.PR_Number}/>
+                                                <span className="text-[11px] text-gray-400">
+                                                    {iars.length} {iars.length === 1 ? 'report' : 'reports'}
+                                                </span>
                                             </span>
                                         </div>
                                         {iars.length === 0 ? (

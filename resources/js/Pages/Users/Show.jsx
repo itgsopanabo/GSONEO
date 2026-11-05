@@ -8,6 +8,7 @@ import Modal from '@/Components/Modal';
 import PrimaryButton from '@/Components/PrimaryButton';
 import SecondaryButton from '@/Components/SecondaryButton';
 import SetPasswordModal from '@/Components/Users/SetPasswordModal';
+import TemporaryPasswordModal from '@/Components/Users/TemporaryPasswordModal';
 import { StatusBadge, initialsOf, lastSeen } from '@/Components/Users/UserBits.jsx';
 
 function Card({ icon: Icon, title, description, children, tone = 'default' }) {
@@ -32,7 +33,7 @@ function actionLabel(action) {
     return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export default function Show({ user, statuses, roles = [], isSelf, defaultPassword, recent = [], changeCount = 0 }) {
+export default function Show({ user, statuses, roles = [], isSelf, recent = [], changeCount = 0 }) {
     const { auth } = usePage().props;
     const canSeeAudit = (auth?.permissions ?? []).includes('audit.view');
 
@@ -219,14 +220,14 @@ export default function Show({ user, statuses, roles = [], isSelf, defaultPasswo
                             title="Password"
                             description={isSelf
                                 ? 'Change your own password from your profile page, where you confirm your current one.'
-                                : 'Passwords are stored in a form that cannot be read back, so you can replace this one but not view it.'}
+                                : 'Passwords are stored in a form that cannot be read back. You can replace this one with a one-time password, which they change at sign-in.'}
                         >
                             {isSelf ? (
                                 <Link href={route('profile.edit')}>
                                     <SecondaryButton>Go to your profile</SecondaryButton>
                                 </Link>
                             ) : (
-                                <SecondaryButton onClick={() => setSettingPassword(true)}>Set new password</SecondaryButton>
+                                <SecondaryButton onClick={() => setSettingPassword(true)}>Issue one-time password</SecondaryButton>
                             )}
                         </Card>
                     </div>
@@ -287,8 +288,9 @@ export default function Show({ user, statuses, roles = [], isSelf, defaultPasswo
             <SetPasswordModal
                 user={settingPassword ? { id: user.id, emp_id: user.emp_id, name: fullName } : null}
                 onClose={() => setSettingPassword(false)}
-                defaultPassword={defaultPassword}
             />
+
+            <TemporaryPasswordModal />
 
             <Modal show={confirmingRole} onClose={() => !savingRole && setConfirmingRole(false)} maxWidth="md">
                 <div className="p-6">

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DocumentNumber;
 use App\Models\AuditLog;
 use App\Models\Departments;
 use App\Models\PurchaseRequest;
@@ -289,15 +290,8 @@ class EncodingController extends Controller
      */
     private function nextPrNumber(): string
     {
-        $prefix = 'EPR-' . date('Y') . '-';
-
-        $last = PurchaseRequest::query()
-            ->where('pr_number', 'like', $prefix . '%')
-            ->lockForUpdate()
-            ->max('pr_number');
-
-        $sequence = $last ? ((int) substr($last, strlen($prefix))) + 1 : 1;
-
-        return $prefix . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+        // Encoded and online requests share one PR series now that the number
+        // carries no PR/EPR prefix to tell them apart.
+        return DocumentNumber::next('pr');
     }
 }

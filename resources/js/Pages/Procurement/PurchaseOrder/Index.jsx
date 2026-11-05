@@ -51,8 +51,8 @@ const QUEUE_COUNTERS = [{
     style: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300',
 },];
 
-const EMPTY_PO_FORM = {supplier: '', po_number_mode: 'auto', po_number: ''};
-const CLOSED_RESULT_MODAL = {isOpen: false, poNumber: null, supplier: null};
+const EMPTY_PO_FORM = {supplier: '', description: '', po_number_mode: 'auto', po_number: ''};
+const CLOSED_RESULT_MODAL = {isOpen: false, poNumber: null, supplier: null, description: null};
 
 // Default matches the PR page's arithmetic so totals agree across both pages.
 // If `total_estimated_cost` is already a line total, switch the two lines below
@@ -162,6 +162,7 @@ export default function Index({purchaseOrders}) {
                 // relation is missing.
                 pr_number: pr?.pr_number ?? item?.PR_Number ?? '—',
                 supplier: item?.PO_Supplier ?? null,
+                description: item?.PO_Description ?? null,
                 po_date: item?.PO_Date ?? null,
                 requester_department: pr?.requester_department ?? '',
                 status: item?.status ?? pr?.status ?? 0,
@@ -272,7 +273,7 @@ export default function Index({purchaseOrders}) {
         // Prefill from the row so re-running after a validation failure doesn't
         // make the user retype what the server already has.
         setPoForm({
-            ...EMPTY_PO_FORM, supplier: selected.supplier ?? '',
+            ...EMPTY_PO_FORM, supplier: selected.supplier ?? '', description: selected.description ?? '',
         });
         setPoFormModal({isOpen: true});
     }
@@ -288,7 +289,7 @@ export default function Index({purchaseOrders}) {
         setProcessing(true);
 
         router.post(route(ROUTES.generatePONumber, {purchase_request: selected.purchaseRequestId}), {
-            supplier: poForm.supplier, po_number_mode: poForm.po_number_mode, // Only sent when the user types the number themselves. If the
+            supplier: poForm.supplier, description: poForm.description, po_number_mode: poForm.po_number_mode, // Only sent when the user types the number themselves. If the
 
             ...(poForm.po_number_mode === 'manual' ? {po_number: poForm.po_number} : {}),
         }, {
@@ -298,7 +299,7 @@ export default function Index({purchaseOrders}) {
 
                 if (poNumber) {
                     setPoResultModal({
-                        isOpen: true, poNumber, supplier: poForm.supplier,
+                        isOpen: true, poNumber, supplier: poForm.supplier, description: poForm.description,
                     });
                 } else {
                     console.warn('[generatePONumber] No po_number in response — check the controller redirect.');
@@ -483,7 +484,16 @@ export default function Index({purchaseOrders}) {
                                         Request Summary
                                     </p>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                                    <div className="mb-4">
+                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                                            PO Description:
+                                        </p>
+                                        <p className="text-xs font-medium text-gray-900 dark:text-white whitespace-pre-line">
+                                            {selected.description || '—'}
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                         <div>
                                             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
                                                 PR Number
@@ -508,14 +518,6 @@ export default function Index({purchaseOrders}) {
                                                 {formatDate(selected.created_at)}
                                             </p>
                                         </div>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                                            Purpose/Reason:
-                                        </p>
-                                        <p className="text-xs font-medium text-gray-900 dark:text-white">
-                                            {selected.remarks_or_notes || '—'}
-                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -672,6 +674,23 @@ export default function Index({purchaseOrders}) {
                     <div>
                         <label
                             className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                            PO Description
+                        </label>
+                        <textarea
+                            rows={3}
+                            maxLength={1000}
+                            placeholder="What this order is for (optional)"
+                            value={poForm.description}
+                            onChange={(e) => setPoForm({...poForm, description: e.target.value})}
+                            className="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                        />
+                        {poErrors.description && (
+                            <p className="mt-1 text-[11px] text-red-600">{poErrors.description}</p>)}
+                    </div>
+
+                    <div>
+                        <label
+                            className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
                             PO Number Mode
                         </label>
                         <select
@@ -695,8 +714,8 @@ export default function Index({purchaseOrders}) {
                         <input
                             type="number"
                             min="1"
-                            max="99999"
-                            placeholder="e.g. 12 becomes PO-2026-00012"
+                            max="9999"
+                            placeholder={`e.g. 12 becomes ${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-0012`}
                             value={poForm.po_number}
                             onChange={(e) => setPoForm({...poForm, po_number: e.target.value})}
                             className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
@@ -738,6 +757,10 @@ export default function Index({purchaseOrders}) {
                     {poResultModal.supplier && (<p className="text-[11px] text-gray-500 dark:text-gray-400">
                         Supplier: <span
                         className="text-gray-900 dark:text-white">{poResultModal.supplier}</span>
+                    </p>)}
+                    {poResultModal.description && (<p className="text-[11px] text-gray-500 dark:text-gray-400 whitespace-pre-line">
+                        Description: <span
+                        className="text-gray-900 dark:text-white">{poResultModal.description}</span>
                     </p>)}
                 </div>)}
 

@@ -3,9 +3,10 @@ import { Link } from '@inertiajs/react';
 const TABS = [
     { label: 'Letterhead and design', route: 'document-settings.index' },
     { label: 'Signatories', route: 'document-settings.signatories' },
+    { label: 'Numbering', route: 'document-numbering.index' },
 ];
 
-/** Switches between the two Document Branding screens. */
+/** Switches between the Document Branding screens. */
 export default function DocumentSettingsTabs() {
     return (
         <nav aria-label="Document branding" className="flex gap-1 border-b border-gray-200 dark:border-gray-700">

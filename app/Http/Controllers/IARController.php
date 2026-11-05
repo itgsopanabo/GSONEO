@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DocumentNumber;
 use App\LogsAudit;
 use App\Models\IAR;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
+use App\Services\Signatories;
 use Barryvdh\DomPDF\Facade\Pdf;
 use DomainException;
 use Illuminate\Http\Request;
@@ -146,6 +148,7 @@ class IARController extends Controller
             'iarNumber'      => $iar->iar_number,
             'deliveryStatus' => $iar->delivery_status,
             'items'          => $this->linesOn($iar, $purchaseOrder),
+            'signers'        => Signatories::for('iar', $purchaseOrder->purchaseRequest),
         ]);
 
         return $pdf->stream("{$iar->iar_number}.pdf");
@@ -263,27 +266,14 @@ class IARController extends Controller
     }
 
     /**
-     * Next IAR number for the current year, e.g. IAR-2026-0007.
+     * Next IAR number, e.g. 2026-11-0007.
      *
-     * Derived from the last record's number rather than a row count, so
-     * deleting a report can't cause the next one to collide with an
-     * existing number.
+     * Derived from the highest number rather than a row count, so deleting a
+     * report can't cause the next one to collide with an existing number.
      */
     private function nextIarNumber(): string
     {
-        $year = now()->year;
-
-        $last = IAR::whereYear('created_at', $year)
-            ->latest('id')
-            ->first();
-
-        $sequence = 1;
-        if ($last) {
-            $parts = explode('-', $last->iar_number);
-            $sequence = intval(end($parts)) + 1;
-        }
-
-        return sprintf('IAR-%d-%04d', $year, $sequence);
+        return DocumentNumber::next('iar');
     }
 
     /**

@@ -105,7 +105,7 @@ docker compose exec app php artisan <command>
 
 ## Usage
 
-1. Sign in with your employee ID. Accounts are created by an administrator from the User List; there is no self-registration. New accounts start on the default password and must set their own at first sign-in.
+1. Sign in with your employee ID. Accounts are created by an administrator from the User List; there is no self-registration. New accounts get a one-time password from the administrator and must set their own at first sign-in.
 2. The sidebar and dashboard show the modules your role's permissions allow — **Procurement**, **Inventory**, **Records**, and more.
 3. Submit, review, or approve requests as needed — all actions are logged for auditing purposes.
 
@@ -125,7 +125,7 @@ Manages the storage tracking of physical document copies, designed specifically 
 ### 🛠️ System Admin
 Provides moderation and oversight of the entire system — managing user accounts and roles, configuring permissions, monitoring activity/audit logs, and maintaining overall system settings and data integrity across the Procurement, Inventory, and Records modules. Includes a dashboard with a request timeline view, tracking each request from the moment it's received in Inventory through to its release.
 
-**Document Branding** lets an admin change the letterhead printed on every generated PDF (Purchase Request, Canvass Form, IAR, and SSMI) without touching code: the left and right logos, header lines, office name and motto, a footer with the office address and page numbers, an accent colour, and an optional image or text watermark. **PDF Signatories** sets the name and position in each signature block — the Budget Officer, approving officials, supply officers — so a change of personnel is one edit, not a code change.
+**Document Branding** lets an admin change the letterhead printed on every generated PDF (Purchase Request, Canvass Form, IAR, and SSMI) without touching code: the left and right logos, header lines, office name and motto, a footer with the office address and page numbers, an accent colour, and an optional image or text watermark. **PDF Signatories** keeps named signer sets for each document, such as an "IT Equipment" IAR signed by the IT inspectors. Each set can have its own number of signers, and a set can be linked to requesting offices so their requests use it automatically. Staff can switch a request to another set beside its print button, and a change of personnel is one edit, not a code change.
 
 ## Contributing
 

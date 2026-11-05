@@ -10,9 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -61,7 +59,6 @@ class UserController extends Controller
         return Inertia::render('Users/Index', [
             'users' => $users,
             'filters' => $request->only('search', 'role', 'status'),
-            'defaultPassword' => config('Users.default_password'),
             'defaultStatusId' => Status::activeId(),
             'stats' => [
                 'total' => (int) $byStatus->sum(),
@@ -125,7 +122,6 @@ class UserController extends Controller
             'isSelf' => $user->is($request->user()),
             'statuses' => $this->statusOptions($user->status_id),
             'roles' => Role::orderBy('section')->orderBy('role_name')->get(['id', 'role_name', 'section']),
-            'defaultPassword' => config('Users.default_password'),
         ]);
     }
 
@@ -173,22 +169,18 @@ class UserController extends Controller
     }
 
     /**
-     * Create an account from the Add user dialog on the list. By default it
-     * starts on the shared default password, which the new user must replace
-     * at first sign-in (RequirePasswordChange).
+     * Create an account from the Add user dialog on the list. It starts on a
+     * random one-time password, shown to the admin once, which the new user
+     * must replace at first sign-in (RequirePasswordChange).
      */
     public function store(Request $request): RedirectResponse
     {
-        $useDefault = $request->boolean('use_default_password') && filled(config('Users.default_password'));
-
         $validated = $request->validate([
             'emp_id' => ['required', 'integer', 'min:1', Rule::unique('users', 'emp_id')],
             'emp_fname' => ['required', 'string', 'max:255'],
             'emp_lname' => ['required', 'string', 'max:255'],
             'role_id' => ['required', Rule::exists('role', 'id')],
             'status_id' => ['required', Rule::in(Status::selectableIds())],
-            'use_default_password' => ['boolean'],
-            'password' => $useDefault ? ['nullable'] : ['required', 'confirmed', Password::defaults()],
         ], [
             'emp_id.unique' => 'Another account already uses this employee ID.',
         ], [
@@ -199,31 +191,44 @@ class UserController extends Controller
             'status_id' => 'status',
         ]);
 
-        $user = User::create([
+        $user = new User([
             'emp_id' => $validated['emp_id'],
             'emp_fname' => trim($validated['emp_fname']),
             'emp_lname' => trim($validated['emp_lname']),
             'role_id' => $validated['role_id'],
             'status_id' => $validated['status_id'],
-            'password' => $useDefault ? config('Users.default_password') : $validated['password'],
         ]);
+        $password = $user->issueTemporaryPassword();
 
         AuditLog::create([
             'user_id' => Auth::id(),
             'action' => 'created',
             'auditable_type' => User::class,
             'auditable_id' => $user->id,
-            'description' => "Added user {$user->emp_fname} {$user->emp_lname} (employee {$user->emp_id})"
-                .($useDefault ? ' with the default password' : ''),
+            'description' => "Added user {$user->emp_fname} {$user->emp_lname} (employee {$user->emp_id}) with a one-time password",
             'old_values' => null,
             'new_values' => $user->only('emp_id', 'emp_fname', 'emp_lname', 'role_id', 'status_id'),
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
         ]);
 
-        return back()->with('success', $useDefault
-            ? "{$user->emp_lname}, {$user->emp_fname} was added. They sign in with the default password and choose their own."
-            : "{$user->emp_lname}, {$user->emp_fname} was added.");
+        return back()
+            ->with('success', "{$user->emp_lname}, {$user->emp_fname} was added.")
+            ->with('temporary_password', $this->handover($user, $password));
+    }
+
+    /**
+     * The one-time password as the admin sees it, once: it rides in the flash
+     * to the next page and is gone after that. Only its hash is stored.
+     */
+    private function handover(User $user, string $password): array
+    {
+        return [
+            'name' => "{$user->emp_lname}, {$user->emp_fname}",
+            'emp_id' => $user->emp_id,
+            'password' => $password,
+            'expires_at' => $user->temporary_password_expires_at->toIso8601String(),
+        ];
     }
 
     /**
@@ -272,9 +277,9 @@ class UserController extends Controller
     }
 
     /**
-     * Set a new password for another user — for someone who forgot theirs or
-     * a new account handed over with a temporary one. The old password is a
-     * one-way hash, so it is replaced, never shown.
+     * Issue another user a new one-time password — for someone who forgot
+     * theirs, or whose first one expired. The old password is a one-way hash,
+     * so it is replaced, never shown, and stops working right away.
      */
     public function updatePassword(Request $request, User $user): RedirectResponse
     {
@@ -283,22 +288,11 @@ class UserController extends Controller
             return back()->with('error', 'Change your own password from your profile page.');
         }
 
-        $default = config('Users.default_password');
-        $isDefault = filled($default) && $request->input('password') === $default;
-
-        $validated = $request->validate([
-            // The shared default is the one short password allowed: whoever
-            // signs in with it is made to choose their own (RequirePasswordChange).
-            'password' => ['required', 'confirmed', ...($isDefault ? [] : [Password::defaults()])],
+        $request->validate([
             'sign_out' => ['boolean'],
         ]);
 
-        // The model casts `password` as hashed. A new remember token stops an
-        // old "keep me signed in" cookie from bringing the previous login back.
-        $user->forceFill([
-            'password' => $validated['password'],
-            'remember_token' => Str::random(60),
-        ])->save();
+        $password = $user->issueTemporaryPassword();
 
         if ($request->boolean('sign_out')) {
             DB::table(config('session.table', 'sessions'))->where('emp_id', $user->emp_id)->delete();
@@ -309,8 +303,7 @@ class UserController extends Controller
             'action' => 'password_reset',
             'auditable_type' => User::class,
             'auditable_id' => $user->id,
-            'description' => ($isDefault ? 'Reset to the default password' : 'Set a new password')
-                ." for {$user->emp_fname} {$user->emp_lname} (employee {$user->emp_id})"
+            'description' => "Issued a one-time password for {$user->emp_fname} {$user->emp_lname} (employee {$user->emp_id})"
                 .($request->boolean('sign_out') ? ' and signed them out' : ''),
             'old_values' => null,
             'new_values' => null, // never record the password, hashed or not
@@ -318,9 +311,9 @@ class UserController extends Controller
             'user_agent' => $request->userAgent(),
         ]);
 
-        return back()->with('success', $isDefault
-            ? "{$user->emp_lname}, {$user->emp_fname} was reset to the default password and must choose a new one at sign-in."
-            : "New password set for {$user->emp_lname}, {$user->emp_fname}.");
+        return back()
+            ->with('success', "One-time password issued for {$user->emp_lname}, {$user->emp_fname}.")
+            ->with('temporary_password', $this->handover($user, $password));
     }
 
     public function destroy(Request $request, User $user): RedirectResponse
