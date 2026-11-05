@@ -54,7 +54,7 @@ The **GSO Information System** is an internal web application built for the Gene
 
 **Prerequisites:** Docker and Docker Compose installed on your machine.
 
-**Branches:** `staging` is where new work goes and is tested. `main` is production and only receives `staging` through a pull request. See *Updating the application* in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+**Branches:** `staging` is where new work goes and is tested. `main` is production and only receives `staging` through a pull request. The live server updates itself within about five minutes of a merge into `main`. See *Updating the application* in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ```bash
 # Clone the repository (staging for development; the live server uses main)

@@ -480,13 +480,17 @@ The repository has two long-lived branches:
 1. **Commit and push changes to `staging`.** Don't commit to `main` directly.
 2. **Test on `staging`.** Run it locally or on a test server, ideally against a copy of the live database (see section 10).
 3. **Release** by opening a pull request from `staging` into `main` on GitHub, then merging it. The pull request lists everything that is about to go live.
-4. **Update the live server** with the steps below. It stays on `main`, so `git pull` brings in exactly what was merged.
+4. **The live server updates itself** within about five minutes of the merge ([section 11.3](#113-automatic-updates)). Without the scheduled task, run the steps below by hand. The server stays on `main`, so it receives exactly what was merged.
+
+**Merging into `main` is the moment of release.** Merge outside office hours, and tell users first: the site shows a maintenance page for the few minutes the update takes.
 
 A fix needed on production urgently also goes through `staging` first, then into `main` the same way, so the two branches never drift apart.
 
 To set up a test server, follow this guide with `git clone -b staging <repository-url>`. Use its own `.env` and database, never the live ones.
 
 ### Update steps
+
+These are the steps `deploy\auto-update.ps1` runs. Run them by hand only if the scheduled task isn't set up.
 
 ```powershell
 cd C:\gsoneo
@@ -522,6 +526,60 @@ The migration `2026_11_05_000000_create_signatory_sets` replaces the single list
 
 To use the new sets afterwards, open **Administration → PDF Signatories**. Add a set, for example "IT Equipment" for the IAR, and link it to the offices whose requests it should sign. See *Signatories* in the technical documentation.
 
+### 11.3 Automatic updates
+
+A scheduled task runs `deploy\auto-update.ps1` every five minutes. When `main` on GitHub has new commits, the script runs the [update steps](#update-steps) by itself, including `backup.ps1` before anything changes. When nothing is new, it does nothing and writes nothing.
+
+**Why it checks GitHub instead of GitHub contacting the server.** The server sits behind the VPN, and the repository is public. GitHub can't reach the server, and GitHub's own guidance is not to connect a self-hosted runner to a public repository, because a pull request from anyone's fork could run code on it. Checking only reads from GitHub, so nothing from outside can make the server run code. The cost is a delay of up to five minutes.
+
+**Set it up once, as an administrator:**
+
+1. Let Git work in `C:\gsoneo` when run as SYSTEM. Without this, Git refuses a folder owned by another user:
+
+   ```powershell
+   git config --system --add safe.directory C:/gsoneo
+   ```
+
+2. Check that `backup.ps1` exists ([section 10.1](#101-the-script)). The script won't update without it.
+
+3. Try it without changing anything. It says whether an update is waiting and lists the commits:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File C:\gsoneo\deploy\auto-update.ps1 -DryRun
+   ```
+
+4. Register the task:
+
+   ```powershell
+   $action   = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\gsoneo\deploy\auto-update.ps1'
+   $trigger  = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
+   $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1) -StartWhenAvailable
+   Register-ScheduledTask -TaskName 'GSONEO auto-update' -Action $action -Trigger $trigger -Settings $settings -RunLevel Highest -User 'SYSTEM'
+   ```
+
+5. **Protect `main` on GitHub:** **Settings → Branches → Add branch ruleset**, target `main`, and turn on **Require a pull request before merging**. Whatever reaches `main` goes live by itself, so it should only get there through a reviewed `staging` → `main` pull request.
+
+**What it refuses to do.** It leaves the site exactly as it is, and logs why, when:
+
+- the checkout has local changes (the server's regenerated `docs/erd` doesn't count),
+- the checkout is on a branch other than `main`, or
+- the checkout has commits that `main` doesn't, so it can't simply move forward.
+
+**When an update fails.** Every run is logged in `C:\gsoneo\storage\logs\auto-update.log`, with each step and its output.
+
+- **Before the code changed** (the backup or `artisan down` failed): the site is put back up as it was. The next run tries again.
+- **After the code changed** (for example a migration failed): the site **stays on the maintenance page**, because running new code on a half-migrated database is worse than a short outage. The script writes `storage\auto-update-failed.txt`, and later runs do nothing while it exists. Read the log, fix the problem, then finish the update:
+
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File C:\gsoneo\deploy\auto-update.ps1 -Retry
+  ```
+
+  `-Retry` runs all the steps again and removes the marker when they succeed. If the problem was in the release itself, fix it on `staging` and merge it into `main` first.
+
+**Releases that need a manual step,** like [11.1](#111-the-update-that-retired-the-default-password), still need it: the script runs the update, then someone does the follow-up. Read the release's notes in this section before you merge.
+
+**To pause automatic updates,** for example during an audit, disable the task: `Disable-ScheduledTask -TaskName 'GSONEO auto-update'`. Turn it back on with `Enable-ScheduledTask`.
+
 ---
 
 ## 12. Monitoring and what happens when something fails
@@ -534,6 +592,7 @@ To use the new sets afterwards, open **Administration → PDF Signatories**. Add
 | App reachable | `Invoke-WebRequest https://gsoneo.lgu.local/up` from a connected client; Laravel's health route returns 200 |
 | VPN up | `tailscale status`, or the WireGuard tunnel showing a recent handshake |
 | Backups | Last night's file exists **and** reached the off-machine destination |
+| Automatic updates | **Task Scheduler → GSONEO auto-update**: last result `0x0`. No `storage\auto-update-failed.txt`. The end of `storage\logs\auto-update.log` says "Done" for the latest release |
 | Disk space | The Docker data drive and the backup folder |
 | App errors | `docker compose exec app tail -f storage/logs/laravel.log` |
 | After every reboot | That all of the above still hold without anyone signing in |
@@ -587,4 +646,5 @@ To use the new sets afterwards, open **Administration → PDF Signatories**. Add
 - [ ] `backup.ps1` scheduled, and its task shows a successful run.
 - [ ] Backups land off the machine, and **one test restore completed**.
 - [ ] `.env`, VPN config and certificate backed up separately.
+- [ ] Automatic updates: the `-DryRun` check passes, the **GSONEO auto-update** task is registered, and `main` is protected on GitHub ([section 11.3](#113-automatic-updates)).
 - [ ] Pilot with a few users — including one off-site — before rolling out to everyone.

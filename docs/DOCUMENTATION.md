@@ -77,6 +77,7 @@ The app ran on UTC until September 2026, so everything stored before then read e
 | `resources/views/pdf` | Blade templates for generated PDFs; `partials/` holds the shared letterhead, footer and watermark |
 | `docs/` | This documentation |
 | `docs/erd/` | Generated entity relationship diagram (see [Generate the ERD](#generate-the-erd)) |
+| `deploy/auto-update.ps1` | Run on the live server every five minutes; updates it when `main` on GitHub moves (DEPLOYMENT.md, section 11.3) |
 
 ---
 
